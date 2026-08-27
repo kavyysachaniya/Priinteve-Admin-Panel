@@ -4,8 +4,10 @@ import { revalidatePath } from "next/cache";
 import * as vendorService from "@/lib/services/vendors";
 import { vendorFormSchema, type VendorFormValues } from "@/lib/validations/vendor";
 import { flattenZodError, friendlyError, type FormActionResult } from "@/lib/actions/utils";
+import { requirePermission } from "@/lib/auth/session";
 
 export async function createVendorAction(values: VendorFormValues): Promise<FormActionResult> {
+  await requirePermission("vendors:create");
   const parsed = vendorFormSchema.safeParse(values);
   if (!parsed.success) {
     return { success: false, message: "Please fix the highlighted fields.", fieldErrors: flattenZodError(parsed.error) };
@@ -21,6 +23,7 @@ export async function createVendorAction(values: VendorFormValues): Promise<Form
 }
 
 export async function updateVendorAction(id: string, values: VendorFormValues): Promise<FormActionResult> {
+  await requirePermission("vendors:edit");
   const parsed = vendorFormSchema.safeParse(values);
   if (!parsed.success) {
     return { success: false, message: "Please fix the highlighted fields.", fieldErrors: flattenZodError(parsed.error) };
@@ -36,6 +39,7 @@ export async function updateVendorAction(id: string, values: VendorFormValues): 
 }
 
 export async function deleteVendorAction(id: string) {
+  await requirePermission("vendors:edit");
   try {
     await vendorService.deleteVendor(id);
     revalidatePath("/vendors");
@@ -44,4 +48,3 @@ export async function deleteVendorAction(id: string) {
     return { success: false, message: friendlyError(err) };
   }
 }
-

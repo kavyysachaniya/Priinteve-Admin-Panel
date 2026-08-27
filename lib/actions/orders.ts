@@ -4,15 +4,17 @@ import { revalidatePath } from "next/cache";
 import * as orderService from "@/lib/services/orders";
 import { orderFormSchema, type OrderFormValues } from "@/lib/validations/order";
 import { flattenZodError, friendlyError, type FormActionResult } from "@/lib/actions/utils";
+import { requirePermission } from "@/lib/auth/session";
 import type { OrderStatus } from "@prisma/client";
 
 export async function createOrderAction(values: OrderFormValues): Promise<FormActionResult> {
+  const session = await requirePermission("orders:create");
   const parsed = orderFormSchema.safeParse(values);
   if (!parsed.success) {
     return { success: false, message: "Please fix the highlighted fields.", fieldErrors: flattenZodError(parsed.error) };
   }
   try {
-    const order = await orderService.createOrder(parsed.data);
+    const order = await orderService.createOrder(parsed.data, session.id);
     revalidatePath("/orders");
     revalidatePath("/production");
     revalidatePath("/planner");
@@ -23,12 +25,13 @@ export async function createOrderAction(values: OrderFormValues): Promise<FormAc
 }
 
 export async function updateOrderAction(id: string, values: OrderFormValues): Promise<FormActionResult> {
+  const session = await requirePermission("orders:edit");
   const parsed = orderFormSchema.safeParse(values);
   if (!parsed.success) {
     return { success: false, message: "Please fix the highlighted fields.", fieldErrors: flattenZodError(parsed.error) };
   }
   try {
-    await orderService.updateOrder(id, parsed.data);
+    await orderService.updateOrder(id, parsed.data, session.id);
     revalidatePath("/orders");
     revalidatePath(`/orders/${id}`);
     revalidatePath("/production");
@@ -39,8 +42,9 @@ export async function updateOrderAction(id: string, values: OrderFormValues): Pr
 }
 
 export async function updateOrderStatusAction(id: string, status: OrderStatus) {
+  const session = await requirePermission("orders:update_status");
   try {
-    const order = await orderService.updateOrderStatus(id, status);
+    await orderService.updateOrderStatus(id, status, session.id);
     revalidatePath("/orders");
     revalidatePath(`/orders/${id}`);
     revalidatePath("/production");
@@ -51,6 +55,7 @@ export async function updateOrderStatusAction(id: string, status: OrderStatus) {
 }
 
 export async function deleteOrderAction(id: string) {
+  await requirePermission("orders:delete");
   try {
     await orderService.deleteOrder(id);
     revalidatePath("/orders");
@@ -62,8 +67,9 @@ export async function deleteOrderAction(id: string) {
 }
 
 export async function convertQuotationToOrderAction(quotationId: string) {
+  const session = await requirePermission("orders:create");
   try {
-    const order = await orderService.convertQuotationToOrder(quotationId);
+    const order = await orderService.convertQuotationToOrder(quotationId, session.id);
     revalidatePath("/orders");
     revalidatePath("/production");
     revalidatePath("/quotations");
@@ -73,4 +79,3 @@ export async function convertQuotationToOrderAction(quotationId: string) {
     return { success: false, message: friendlyError(err) };
   }
 }
-

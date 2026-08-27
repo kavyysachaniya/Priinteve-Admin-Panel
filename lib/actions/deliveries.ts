@@ -3,11 +3,13 @@
 import { revalidatePath } from "next/cache";
 import * as deliveryService from "@/lib/services/deliveries";
 import { friendlyError } from "@/lib/actions/utils";
+import { requirePermission } from "@/lib/auth/session";
 import type { DeliveryStatus } from "@prisma/client";
 
 export async function updateDeliveryStatusAction(id: string, status: DeliveryStatus, notes?: string) {
+  await requirePermission("deliveries:update_status");
   try {
-    const delivery = await deliveryService.updateDeliveryStatus(id, status, notes);
+    await deliveryService.updateDeliveryStatus(id, status, notes);
     revalidatePath("/deliveries");
     revalidatePath(`/deliveries/${id}`);
     revalidatePath("/orders");
@@ -17,4 +19,3 @@ export async function updateDeliveryStatusAction(id: string, status: DeliverySta
     return { success: false, message: friendlyError(err) };
   }
 }
-

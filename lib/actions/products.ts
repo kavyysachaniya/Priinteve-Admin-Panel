@@ -4,10 +4,12 @@ import { revalidatePath } from "next/cache";
 import * as productService from "@/lib/services/products";
 import { productFormSchema, type ProductFormValues } from "@/lib/validations/product";
 import { flattenZodError, friendlyError, type FormActionResult } from "@/lib/actions/utils";
+import { requirePermission } from "@/lib/auth/session";
 
 export type { FormActionResult };
 
 export async function createProductAction(values: ProductFormValues): Promise<FormActionResult> {
+  await requirePermission("products:create");
   const parsed = productFormSchema.safeParse(values);
   if (!parsed.success) {
     return { success: false, message: "Please fix the highlighted fields.", fieldErrors: flattenZodError(parsed.error) };
@@ -22,6 +24,7 @@ export async function createProductAction(values: ProductFormValues): Promise<Fo
 }
 
 export async function updateProductAction(id: string, values: ProductFormValues): Promise<FormActionResult> {
+  await requirePermission("products:edit");
   const parsed = productFormSchema.safeParse(values);
   if (!parsed.success) {
     return { success: false, message: "Please fix the highlighted fields.", fieldErrors: flattenZodError(parsed.error) };
@@ -36,6 +39,7 @@ export async function updateProductAction(id: string, values: ProductFormValues)
 }
 
 export async function deleteProductAction(id: string) {
+  await requirePermission("products:delete");
   try {
     await productService.deleteProduct(id);
     revalidatePath("/products");

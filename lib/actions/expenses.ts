@@ -4,8 +4,10 @@ import { revalidatePath } from "next/cache";
 import * as expenseService from "@/lib/services/expenses";
 import { expenseFormSchema, type ExpenseFormValues } from "@/lib/validations/expense";
 import { flattenZodError, friendlyError, type FormActionResult } from "@/lib/actions/utils";
+import { requirePermission } from "@/lib/auth/session";
 
 export async function createExpenseAction(values: ExpenseFormValues): Promise<FormActionResult> {
+  await requirePermission("expenses:create");
   const parsed = expenseFormSchema.safeParse(values);
   if (!parsed.success) {
     return { success: false, message: "Please fix the highlighted fields.", fieldErrors: flattenZodError(parsed.error) };
@@ -22,6 +24,7 @@ export async function createExpenseAction(values: ExpenseFormValues): Promise<Fo
 }
 
 export async function updateExpenseAction(id: string, values: ExpenseFormValues): Promise<FormActionResult> {
+  await requirePermission("expenses:edit");
   const parsed = expenseFormSchema.safeParse(values);
   if (!parsed.success) {
     return { success: false, message: "Please fix the highlighted fields.", fieldErrors: flattenZodError(parsed.error) };
@@ -39,6 +42,7 @@ export async function updateExpenseAction(id: string, values: ExpenseFormValues)
 }
 
 export async function deleteExpenseAction(id: string) {
+  await requirePermission("expenses:delete");
   try {
     await expenseService.deleteExpense(id);
     revalidatePath("/expenses");
@@ -49,4 +53,3 @@ export async function deleteExpenseAction(id: string) {
     return { success: false, message: friendlyError(err) };
   }
 }
-

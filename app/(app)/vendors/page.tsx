@@ -1,4 +1,5 @@
 export const dynamic = "force-dynamic";
+
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
@@ -8,12 +9,20 @@ import { TableFilterSelect } from "@/components/shared/table-filter-select";
 import { TablePagination } from "@/components/shared/table-pagination";
 import { listVendors } from "@/lib/services/vendors";
 import type { VendorStatus } from "@prisma/client";
+import { requirePermission } from "@/lib/auth/session";
+import { redirect } from "next/navigation";
 
 export const metadata = { title: "Vendors — Priinteve Business OS" };
 
 export default async function VendorsPage(props: {
   searchParams: Promise<{ q?: string; status?: string; page?: string }>;
 }) {
+  try {
+    await requirePermission("vendors:view");
+  } catch {
+    redirect("/dashboard");
+  }
+
   const searchParams = (await props.searchParams) || {};
   const q = searchParams.q ?? "";
   const status = searchParams.status as VendorStatus | undefined;
@@ -50,4 +59,3 @@ export default async function VendorsPage(props: {
     </div>
   );
 }
-

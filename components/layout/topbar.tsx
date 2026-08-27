@@ -4,8 +4,11 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { toast } from "sonner";
+import { useSession, signOut } from "next-auth/react";
 import { Menu, Search, Plus, Bell, Settings, LogOut, UserRound, ChevronDown } from "lucide-react";
 import { NAV_SECTIONS, QUICK_ACTIONS } from "@/lib/nav-config";
+import { ROLE_PERMISSIONS } from "@/lib/auth/permissions";
+import type { UserRole } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -33,10 +36,31 @@ function currentSectionLabel(pathname: string): string {
   return "Priinteve";
 }
 
+function getInitials(name?: string | null): string {
+  if (!name) return "US";
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
+
 export function Topbar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const title = currentSectionLabel(pathname);
+  const { data: session } = useSession();
+
+  const user = session?.user;
+  const role = (user as any)?.role as UserRole | undefined;
+
+  // Filter quick actions based on permissions
+  const filteredQuickActions = QUICK_ACTIONS.filter((action) => {
+    if (!action.requiredPermission) return true;
+    if (!role) return false;
+    return ROLE_PERMISSIONS[role]?.includes(action.requiredPermission) ?? false;
+  });
 
   return (
     <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-6">
@@ -77,22 +101,24 @@ export function Topbar() {
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button size="sm" className="gap-1.5">
-              <Plus className="size-4" />
-              <span className="hidden sm:inline">New</span>
-              <ChevronDown className="size-3.5 opacity-70" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            {QUICK_ACTIONS.map((action) => (
-              <DropdownMenuItem key={action.href} asChild>
-                <Link href={action.href}>{action.label}</Link>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {filteredQuickActions.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" className="gap-1.5">
+                <Plus className="size-4" />
+                <span className="hidden sm:inline">New</span>
+                <ChevronDown className="size-3.5 opacity-70" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              {filteredQuickActions.map((action) => (
+                <DropdownMenuItem key={action.href} asChild>
+                  <Link href={action.href}>{action.label}</Link>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
 
         <Popover>
           <PopoverTrigger asChild>
@@ -113,15 +139,20 @@ export function Topbar() {
             <button className="ml-1 flex items-center gap-2 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring">
               <Avatar className="size-8">
                 <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
-                  TS
+                  {getInitials(user?.name)}
                 </AvatarFallback>
               </Avatar>
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel className="font-normal">
-              <p className="text-sm font-medium">Priinteve Admin</p>
-              <p className="text-xs text-muted-foreground">tarangsachaniya8@gmail.com</p>
+              <p className="text-sm font-medium">{user?.name || "Loading…"}</p>
+              <p className="text-xs text-muted-foreground">{user?.email || ""}</p>
+              {role && (
+                <p className="text-[10px] font-semibold uppercase text-primary mt-1">
+                  {role}
+                </p>
+              )}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
@@ -137,7 +168,7 @@ export function Topbar() {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               variant="destructive"
-              onSelect={() => toast.info("Authentication isn't configured yet")}
+              onSelect={() => signOut({ redirectTo: "/login" })}
             >
               <LogOut className="size-4" /> Log out
             </DropdownMenuItem>

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import * as productionService from "@/lib/services/production";
 import { friendlyError } from "@/lib/actions/utils";
+import { requirePermission } from "@/lib/auth/session";
 import type { ProductionStatus } from "@prisma/client";
 
 export async function updateProductionJobStatusAction(
@@ -10,8 +11,9 @@ export async function updateProductionJobStatusAction(
   status: ProductionStatus,
   notes?: string
 ) {
+  const session = await requirePermission("production:update_assigned");
   try {
-    const job = await productionService.updateProductionJobStatus(id, status, notes);
+    await productionService.updateProductionJobStatus(id, status, notes, session.id);
     revalidatePath("/production");
     revalidatePath(`/production/${id}`);
     revalidatePath("/orders");
@@ -21,4 +23,3 @@ export async function updateProductionJobStatusAction(
     return { success: false, message: friendlyError(err) };
   }
 }
-

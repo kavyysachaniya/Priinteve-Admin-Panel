@@ -78,7 +78,8 @@ export async function getProductionJobDetail(id: string) {
 export async function updateProductionJobStatus(
   id: string,
   status: ProductionStatus,
-  notes?: string
+  notes?: string,
+  userId?: string
 ) {
   const job = await prisma.productionJob.findUnique({ where: { id } });
   if (!job) throw new Error("Production job not found");
@@ -97,6 +98,7 @@ export async function updateProductionJobStatus(
         productionJobId: id,
         status,
         notes: notes || null,
+        changedById: userId || null,
       },
     });
 
@@ -125,6 +127,7 @@ export async function updateProductionJobStatus(
     entityId: updated.id,
     productionJobId: updated.id,
     orderId: updated.orderId,
+    userId,
   });
 
   return updated;

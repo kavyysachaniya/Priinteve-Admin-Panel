@@ -4,8 +4,10 @@ import { revalidatePath } from "next/cache";
 import * as taskService from "@/lib/services/tasks";
 import { taskFormSchema, type TaskFormValues } from "@/lib/validations/task";
 import { flattenZodError, friendlyError, type FormActionResult } from "@/lib/actions/utils";
+import { requirePermission } from "@/lib/auth/session";
 
 export async function createTaskAction(values: TaskFormValues): Promise<FormActionResult> {
+  await requirePermission("tasks:create");
   const parsed = taskFormSchema.safeParse(values);
   if (!parsed.success) {
     return { success: false, message: "Please fix the highlighted fields.", fieldErrors: flattenZodError(parsed.error) };
@@ -21,6 +23,7 @@ export async function createTaskAction(values: TaskFormValues): Promise<FormActi
 }
 
 export async function updateTaskAction(id: string, values: TaskFormValues): Promise<FormActionResult> {
+  await requirePermission("tasks:edit");
   const parsed = taskFormSchema.safeParse(values);
   if (!parsed.success) {
     return { success: false, message: "Please fix the highlighted fields.", fieldErrors: flattenZodError(parsed.error) };
@@ -37,6 +40,7 @@ export async function updateTaskAction(id: string, values: TaskFormValues): Prom
 }
 
 export async function toggleTaskStatusAction(id: string) {
+  await requirePermission("tasks:edit");
   try {
     const task = await taskService.toggleTaskStatus(id);
     revalidatePath("/tasks");
@@ -49,6 +53,7 @@ export async function toggleTaskStatusAction(id: string) {
 }
 
 export async function deleteTaskAction(id: string) {
+  await requirePermission("tasks:delete");
   try {
     await taskService.deleteTask(id);
     revalidatePath("/tasks");
@@ -58,4 +63,3 @@ export async function deleteTaskAction(id: string) {
     return { success: false, message: friendlyError(err) };
   }
 }
-

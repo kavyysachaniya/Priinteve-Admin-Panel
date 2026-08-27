@@ -82,6 +82,55 @@ async function main() {
   }
   console.log("✓ Numbering sequences initialized.");
 
+  // 4. Seed initial users (only if no users exist)
+  const userCount = await prisma.user.count();
+  if (userCount === 0) {
+    const bcrypt = await import("bcryptjs");
+    const SALT_ROUNDS = 12;
+
+    const adminHash = await bcrypt.hash("Priinteve@2026", SALT_ROUNDS);
+    const emp1Hash = await bcrypt.hash("Employee@2026", SALT_ROUNDS);
+    const emp2Hash = await bcrypt.hash("Employee@2026", SALT_ROUNDS);
+
+    await prisma.user.create({
+      data: {
+        name: "Admin",
+        email: "admin@priinteve.com",
+        passwordHash: adminHash,
+        role: "ADMIN",
+        status: "ACTIVE",
+      },
+    });
+
+    await prisma.user.create({
+      data: {
+        name: "Employee One",
+        email: "employee1@priinteve.com",
+        passwordHash: emp1Hash,
+        role: "EMPLOYEE",
+        status: "ACTIVE",
+      },
+    });
+
+    await prisma.user.create({
+      data: {
+        name: "Employee Two",
+        email: "employee2@priinteve.com",
+        passwordHash: emp2Hash,
+        role: "EMPLOYEE",
+        status: "ACTIVE",
+      },
+    });
+
+    console.log("✓ Initial users seeded:");
+    console.log("  ADMIN    → admin@priinteve.com       / Priinteve@2026");
+    console.log("  EMPLOYEE → employee1@priinteve.com   / Employee@2026");
+    console.log("  EMPLOYEE → employee2@priinteve.com   / Employee@2026");
+    console.log("  ⚠ Change these passwords after first login!");
+  } else {
+    console.log("✓ Users already exist — skipping user seed.");
+  }
+
   // 4. Restore backed up SQLite data if backup file exists
   const backupPath = path.join(
     process.cwd(),

@@ -4,8 +4,10 @@ import { revalidatePath } from "next/cache";
 import * as noteService from "@/lib/services/notes";
 import { noteFormSchema, type NoteFormValues } from "@/lib/validations/note";
 import { flattenZodError, friendlyError, type FormActionResult } from "@/lib/actions/utils";
+import { requirePermission } from "@/lib/auth/session";
 
 export async function createNoteAction(values: NoteFormValues): Promise<FormActionResult> {
+  await requirePermission("notes:create");
   const parsed = noteFormSchema.safeParse(values);
   if (!parsed.success) {
     return { success: false, message: "Please fix the highlighted fields.", fieldErrors: flattenZodError(parsed.error) };
@@ -21,6 +23,7 @@ export async function createNoteAction(values: NoteFormValues): Promise<FormActi
 }
 
 export async function updateNoteAction(id: string, values: NoteFormValues): Promise<FormActionResult> {
+  await requirePermission("notes:edit");
   const parsed = noteFormSchema.safeParse(values);
   if (!parsed.success) {
     return { success: false, message: "Please fix the highlighted fields.", fieldErrors: flattenZodError(parsed.error) };
@@ -37,6 +40,7 @@ export async function updateNoteAction(id: string, values: NoteFormValues): Prom
 }
 
 export async function togglePinNoteAction(id: string) {
+  await requirePermission("notes:edit");
   try {
     const note = await noteService.togglePinNote(id);
     revalidatePath("/notes");
@@ -49,6 +53,7 @@ export async function togglePinNoteAction(id: string) {
 }
 
 export async function deleteNoteAction(id: string) {
+  await requirePermission("notes:delete");
   try {
     await noteService.deleteNote(id);
     revalidatePath("/notes");
@@ -58,4 +63,3 @@ export async function deleteNoteAction(id: string) {
     return { success: false, message: friendlyError(err) };
   }
 }
-

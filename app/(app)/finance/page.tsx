@@ -15,10 +15,19 @@ import {
 } from "@/lib/services/finance";
 import { formatCurrency } from "@/lib/money";
 
+import { requirePermission } from "@/lib/auth/session";
+import { redirect } from "next/navigation";
+
 export const metadata = { title: "Finance Overview — Priinteve Business OS" };
 export const dynamic = "force-dynamic";
 
 export default async function FinancePage() {
+  try {
+    await requirePermission("finance:view");
+  } catch {
+    redirect("/dashboard");
+  }
+
   const [overview, monthly, topCustomers, financialActivity] = await Promise.all([
     getFinanceOverview(),
     getMonthlyRevenueThisYear(),

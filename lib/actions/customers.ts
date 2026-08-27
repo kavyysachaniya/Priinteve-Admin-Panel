@@ -5,16 +5,18 @@ import { redirect } from "next/navigation";
 import * as customerService from "@/lib/services/customers";
 import { customerFormSchema, type CustomerFormValues } from "@/lib/validations/customer";
 import { flattenZodError, friendlyError, type FormActionResult } from "@/lib/actions/utils";
+import { requirePermission } from "@/lib/auth/session";
 
 export type { FormActionResult };
 
 export async function createCustomerAction(values: CustomerFormValues): Promise<FormActionResult> {
+  const session = await requirePermission("customers:create");
   const parsed = customerFormSchema.safeParse(values);
   if (!parsed.success) {
     return { success: false, message: "Please fix the highlighted fields.", fieldErrors: flattenZodError(parsed.error) };
   }
   try {
-    const customer = await customerService.createCustomer(parsed.data);
+    const customer = await customerService.createCustomer(parsed.data, session.id);
     revalidatePath("/customers");
     revalidatePath("/dashboard");
     return { success: true, id: customer.id };
@@ -24,12 +26,13 @@ export async function createCustomerAction(values: CustomerFormValues): Promise<
 }
 
 export async function updateCustomerAction(id: string, values: CustomerFormValues): Promise<FormActionResult> {
+  const session = await requirePermission("customers:edit");
   const parsed = customerFormSchema.safeParse(values);
   if (!parsed.success) {
     return { success: false, message: "Please fix the highlighted fields.", fieldErrors: flattenZodError(parsed.error) };
   }
   try {
-    await customerService.updateCustomer(id, parsed.data);
+    await customerService.updateCustomer(id, parsed.data, session.id);
     revalidatePath("/customers");
     revalidatePath(`/customers/${id}`);
     return { success: true, id };
@@ -39,6 +42,7 @@ export async function updateCustomerAction(id: string, values: CustomerFormValue
 }
 
 export async function deleteCustomerAction(id: string) {
+  await requirePermission("customers:delete");
   try {
     await customerService.deleteCustomer(id);
     revalidatePath("/customers");
@@ -49,6 +53,7 @@ export async function deleteCustomerAction(id: string) {
 }
 
 export async function deleteCustomerAndRedirectAction(id: string) {
+  await requirePermission("customers:delete");
   await customerService.deleteCustomer(id);
   revalidatePath("/customers");
   redirect("/customers");

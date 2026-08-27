@@ -5,10 +5,12 @@ import { updateCompanySettings } from "@/lib/services/settings";
 import { updateSequencePrefix } from "@/lib/services/numbering";
 import { companySettingsFormSchema, numberingFormSchema, type CompanySettingsFormValues, type NumberingFormValues } from "@/lib/validations/settings";
 import { flattenZodError, friendlyError, type FormActionResult } from "@/lib/actions/utils";
+import { requirePermission } from "@/lib/auth/session";
 
 export type { FormActionResult };
 
 export async function updateCompanySettingsAction(values: CompanySettingsFormValues): Promise<FormActionResult> {
+  await requirePermission("settings:edit");
   const parsed = companySettingsFormSchema.safeParse(values);
   if (!parsed.success) {
     return { success: false, message: "Please fix the highlighted fields.", fieldErrors: flattenZodError(parsed.error) };
@@ -46,6 +48,7 @@ export async function updateCompanySettingsAction(values: CompanySettingsFormVal
 }
 
 export async function updateNumberingAction(values: NumberingFormValues): Promise<FormActionResult> {
+  await requirePermission("settings:edit");
   const parsed = numberingFormSchema.safeParse(values);
   if (!parsed.success) {
     return { success: false, message: "Please fix the highlighted fields.", fieldErrors: flattenZodError(parsed.error) };

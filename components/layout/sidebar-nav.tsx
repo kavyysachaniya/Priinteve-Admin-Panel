@@ -2,8 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { NAV_SECTIONS } from "@/lib/nav-config";
+import { ROLE_PERMISSIONS } from "@/lib/auth/permissions";
+import type { UserRole } from "@prisma/client";
 import {
   Tooltip,
   TooltipContent,
@@ -23,10 +26,22 @@ export function SidebarNav({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
+  const { data: session } = useSession();
+  const role = (session?.user as any)?.role as UserRole | undefined;
+
+  // Filter sections and items based on permissions
+  const filteredSections = NAV_SECTIONS.map((section) => {
+    const filteredItems = section.items.filter((item) => {
+      if (!item.requiredPermission) return true;
+      if (!role) return false; // Hide protected items if session is not loaded yet
+      return ROLE_PERMISSIONS[role]?.includes(item.requiredPermission) ?? false;
+    });
+    return { ...section, items: filteredItems };
+  }).filter((section) => section.items.length > 0);
 
   return (
     <nav className="flex flex-1 flex-col gap-5 overflow-y-auto no-scrollbar px-3 py-4">
-      {NAV_SECTIONS.map((section, i) => (
+      {filteredSections.map((section, i) => (
         <div key={section.label ?? `section-${i}`} className="flex flex-col gap-1">
           {section.label && !collapsed ? (
             <p className="px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/45">
@@ -56,6 +71,7 @@ export function SidebarNav({
                     active ? "text-primary" : "text-sidebar-foreground/55 group-hover:text-sidebar-accent-foreground"
                   )}
                   strokeWidth={1.75}
+                  aria-hidden="true"
                 />
                 {!collapsed && <span className="truncate">{item.label}</span>}
               </Link>

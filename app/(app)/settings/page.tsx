@@ -5,6 +5,9 @@ import { NumberingForm } from "@/components/settings/numbering-form";
 import { getCompanySettings } from "@/lib/services/settings";
 import { getNumberingSequences } from "@/lib/services/numbering";
 
+import { requirePermission } from "@/lib/auth/session";
+import { redirect } from "next/navigation";
+
 export const metadata = { title: "Settings" };
 export const dynamic = "force-dynamic";
 
@@ -13,6 +16,12 @@ function pad(n: number, width: number) {
 }
 
 export default async function SettingsPage() {
+  try {
+    await requirePermission("settings:view");
+  } catch {
+    redirect("/dashboard");
+  }
+
   const [settings, sequences] = await Promise.all([getCompanySettings(), getNumberingSequences()]);
   const quotationSeq = sequences.find((s) => s.key === "quotation")!;
   const invoiceSeq = sequences.find((s) => s.key === "invoice")!;

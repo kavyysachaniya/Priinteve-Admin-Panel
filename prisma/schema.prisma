@@ -16,6 +16,16 @@ datasource db {
 // Enums
 // ---------------------------------------------------------------------------
 
+enum UserRole {
+  ADMIN
+  EMPLOYEE
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
 enum CustomerType {
   INDIVIDUAL
   BUSINESS
@@ -135,18 +145,22 @@ enum VendorStatus {
 // ---------------------------------------------------------------------------
 
 model User {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  role      String   @default("ADMIN")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String     @id @default(cuid())
+  name         String
+  email        String     @unique
+  passwordHash String?
+  role         UserRole   @default(EMPLOYEE)
+  status       UserStatus @default(ACTIVE)
+  lastLoginAt  DateTime?
+  createdById  String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
   activityLogs           ActivityLog[]
-  assignedTasks          Task[]                  @relation("AssignedTasks")
-  assignedOrders         Order[]                 @relation("AssignedOrders")
-  assignedProductionJobs ProductionJob[]         @relation("AssignedProductionJobs")
-  productionHistories    ProductionJobHistory[]  @relation("ProductionHistories")
+  assignedTasks          Task[]                 @relation("AssignedTasks")
+  assignedOrders         Order[]                @relation("AssignedOrders")
+  assignedProductionJobs ProductionJob[]        @relation("AssignedProductionJobs")
+  productionHistories    ProductionJobHistory[] @relation("ProductionHistories")
 }
 
 model Customer {

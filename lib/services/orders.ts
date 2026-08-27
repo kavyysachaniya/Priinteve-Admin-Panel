@@ -105,7 +105,7 @@ export function orderToFormValues(order: any): OrderFormValues {
   };
 }
 
-export async function createOrder(data: OrderFormValues) {
+export async function createOrder(data: OrderFormValues, userId?: string) {
   const number = await generateOrderNumber();
 
   const order = await prisma.$transaction(async (tx) => {
@@ -164,12 +164,13 @@ export async function createOrder(data: OrderFormValues) {
     entityId: order.id,
     orderId: order.id,
     customerId: order.customerId,
+    userId,
   });
 
   return order;
 }
 
-export async function convertQuotationToOrder(quotationId: string) {
+export async function convertQuotationToOrder(quotationId: string, userId?: string) {
   const quotation = await prisma.quotation.findUnique({
     where: { id: quotationId },
     include: { items: true, convertedOrder: true },
@@ -241,6 +242,7 @@ export async function convertQuotationToOrder(quotationId: string) {
         entityId: order.id,
         orderId: order.id,
         customerId: order.customerId,
+        userId,
       },
       tx
     );
@@ -249,7 +251,7 @@ export async function convertQuotationToOrder(quotationId: string) {
   }, TX_OPTIONS);
 }
 
-export async function updateOrder(id: string, data: OrderFormValues) {
+export async function updateOrder(id: string, data: OrderFormValues, userId?: string) {
   const order = await prisma.$transaction(async (tx) => {
     await tx.orderItem.deleteMany({ where: { orderId: id } });
 
@@ -289,12 +291,13 @@ export async function updateOrder(id: string, data: OrderFormValues) {
     entityId: order.id,
     orderId: order.id,
     customerId: order.customerId,
+    userId,
   });
 
   return order;
 }
 
-export async function updateOrderStatus(id: string, status: OrderStatus) {
+export async function updateOrderStatus(id: string, status: OrderStatus, userId?: string) {
   const updated = await prisma.order.update({
     where: { id },
     data: { status },
@@ -307,6 +310,7 @@ export async function updateOrderStatus(id: string, status: OrderStatus) {
     entityId: updated.id,
     orderId: updated.id,
     customerId: updated.customerId,
+    userId,
   });
 
   return updated;

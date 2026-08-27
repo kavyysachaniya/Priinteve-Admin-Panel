@@ -4,10 +4,12 @@ import { revalidatePath } from "next/cache";
 import * as invoiceService from "@/lib/services/invoices";
 import { invoiceFormSchema, type InvoiceFormValues } from "@/lib/validations/invoice";
 import { flattenZodError, friendlyError, type FormActionResult } from "@/lib/actions/utils";
+import { requirePermission } from "@/lib/auth/session";
 
 export type { FormActionResult };
 
 export async function createInvoiceAction(values: InvoiceFormValues): Promise<FormActionResult> {
+  await requirePermission("invoices:create");
   const parsed = invoiceFormSchema.safeParse(values);
   if (!parsed.success) {
     return { success: false, message: "Please fix the highlighted fields.", fieldErrors: flattenZodError(parsed.error) };
@@ -23,6 +25,7 @@ export async function createInvoiceAction(values: InvoiceFormValues): Promise<Fo
 }
 
 export async function updateInvoiceAction(id: string, values: InvoiceFormValues): Promise<FormActionResult> {
+  await requirePermission("invoices:edit");
   const parsed = invoiceFormSchema.safeParse(values);
   if (!parsed.success) {
     return { success: false, message: "Please fix the highlighted fields.", fieldErrors: flattenZodError(parsed.error) };
@@ -38,6 +41,7 @@ export async function updateInvoiceAction(id: string, values: InvoiceFormValues)
 }
 
 export async function markInvoiceSentAction(id: string) {
+  await requirePermission("invoices:edit");
   try {
     await invoiceService.markInvoiceSent(id);
     revalidatePath("/invoices");
@@ -49,6 +53,7 @@ export async function markInvoiceSentAction(id: string) {
 }
 
 export async function cancelInvoiceAction(id: string) {
+  await requirePermission("invoices:edit");
   try {
     await invoiceService.cancelInvoice(id);
     revalidatePath("/invoices");

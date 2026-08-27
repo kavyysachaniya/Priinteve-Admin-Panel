@@ -158,7 +158,7 @@ function toDbFields(data: CustomerFormValues) {
   };
 }
 
-export async function createCustomer(data: CustomerFormValues) {
+export async function createCustomer(data: CustomerFormValues, userId?: string) {
   const customer = await prisma.customer.create({ data: toDbFields(data) });
   await logActivity({
     type: "customer.created",
@@ -166,11 +166,12 @@ export async function createCustomer(data: CustomerFormValues) {
     entityType: "customer",
     entityId: customer.id,
     customerId: customer.id,
+    userId,
   });
   return customer;
 }
 
-export async function updateCustomer(id: string, data: CustomerFormValues) {
+export async function updateCustomer(id: string, data: CustomerFormValues, userId?: string) {
   const customer = await prisma.customer.update({ where: { id }, data: toDbFields(data) });
   await logActivity({
     type: "customer.updated",
@@ -178,6 +179,7 @@ export async function updateCustomer(id: string, data: CustomerFormValues) {
     entityType: "customer",
     entityId: customer.id,
     customerId: customer.id,
+    userId,
   });
   return customer;
 }
