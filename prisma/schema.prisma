@@ -1,0 +1,740 @@
+// Priinteve Business OS — Phase 1 & 2 data model
+// Money is stored as integer paise (smallest currency unit) everywhere to avoid
+// floating point rounding errors in financial calculations. See lib/money.ts.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum CustomerType {
+  INDIVIDUAL
+  BUSINESS
+}
+
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ProductType {
+  PRODUCT
+  SERVICE
+}
+
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CONVERTED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+  BANK_TRANSFER
+  CARD
+  OTHER
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum OrderStatus {
+  DRAFT
+  CONFIRMED
+  IN_PRODUCTION
+  READY
+  OUT_FOR_DELIVERY
+  DELIVERED
+  COMPLETED
+  CANCELLED
+}
+
+enum OrderPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum ProductionStatus {
+  PENDING
+  ASSIGNED
+  IN_PROGRESS
+  QUALITY_CHECK
+  COMPLETED
+  ON_HOLD
+}
+
+enum DeliveryStatus {
+  PENDING
+  SCHEDULED
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FAILED
+  RETURNED
+}
+
+enum DeliveryMethod {
+  SELF_DELIVERY
+  COURIER
+  PICKUP
+  OTHER
+}
+
+enum ExpenseStatus {
+  DRAFT
+  RECORDED
+  CANCELLED
+}
+
+enum VendorStatus {
+  ACTIVE
+  INACTIVE
+}
+
+// ---------------------------------------------------------------------------
+// Core entities
+// ---------------------------------------------------------------------------
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  role      String   @default("ADMIN")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  activityLogs           ActivityLog[]
+  assignedTasks          Task[]                  @relation("AssignedTasks")
+  assignedOrders         Order[]                 @relation("AssignedOrders")
+  assignedProductionJobs ProductionJob[]         @relation("AssignedProductionJobs")
+  productionHistories    ProductionJobHistory[]  @relation("ProductionHistories")
+}
+
+model Customer {
+  id              String         @id @default(cuid())
+  type            CustomerType   @default(INDIVIDUAL)
+  name            String
+  contactPerson   String?
+  phone           String
+  whatsapp        String?
+  email           String?
+  gstin           String?
+  pan             String?
+  billingAddress  String?
+  shippingAddress String?
+  city            String?
+  state           String?
+  pincode         String?
+  notes           String?
+  tags            String?
+  status          CustomerStatus @default(ACTIVE)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  quotations     Quotation[]
+  invoices       Invoice[]
+  payments       Payment[]
+  orders         Order[]
+  productionJobs ProductionJob[]
+  deliveries     Delivery[]
+  tasks          Task[]
+  notesList      Note[]
+  events         CalendarEvent[]
+  activityLogs   ActivityLog[]
+
+  @@index([status])
+  @@index([name])
+}
+
+model ProductCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  products Product[]
+}
+
+model Product {
+  id                String          @id @default(cuid())
+  name              String
+  type              ProductType     @default(PRODUCT)
+  categoryId        String?
+  category          ProductCategory? @relation(fields: [categoryId], references: [id])
+  description       String?
+  sku               String?
+  unit              String          @default("Unit")
+  sellingPricePaise Int
+  costPricePaise    Int?
+  gstRate           Float           @default(0)
+  status            ProductStatus   @default(ACTIVE)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  quotationItems QuotationItem[]
+  invoiceItems   InvoiceItem[]
+  orderItems     OrderItem[]
+  productionJobs ProductionJob[]
+
+  @@index([status])
+  @@index([type])
+}
+
+model Quotation {
+  id            String          @id @default(cuid())
+  number        String          @unique
+  customerId    String
+  customer      Customer        @relation(fields: [customerId], references: [id])
+  issueDate     DateTime
+  validUntil    DateTime
+  status        QuotationStatus @default(DRAFT)
+  notes         String?
+  terms         String?
+
+  subtotalPaise Int @default(0)
+  discountPaise Int @default(0)
+  taxPaise      Int @default(0)
+  shippingPaise Int @default(0)
+  totalPaise    Int @default(0)
+
+  items        QuotationItem[]
+  activityLogs ActivityLog[]
+
+  // one quotation converts to at most one invoice
+  convertedInvoice Invoice? @relation("QuotationConversion")
+
+  // one quotation converts to at most one order
+  convertedOrder Order?    @relation("QuotationOrderConversion")
+
+  tasks Task[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([status])
+}
+
+model QuotationItem {
+  id              String    @id @default(cuid())
+  quotationId     String
+  quotation       Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  productId       String?
+  product         Product?  @relation(fields: [productId], references: [id])
+  name            String
+  description     String?
+  quantity        Float     @default(1)
+  ratePaise       Int
+  discountPercent Float     @default(0)
+  gstRate         Float     @default(0)
+  amountPaise     Int
+  sortOrder       Int       @default(0)
+
+  @@index([quotationId])
+}
+
+model Order {
+  id                     String        @id @default(cuid())
+  number                 String        @unique // e.g. ORD-2026-0001
+  customerId             String
+  customer               Customer      @relation(fields: [customerId], references: [id])
+  sourceQuotationId      String?       @unique
+  sourceQuotation        Quotation?    @relation("QuotationOrderConversion", fields: [sourceQuotationId], references: [id])
+  orderDate              DateTime
+  expectedCompletionDate DateTime?
+  deliveryDate           DateTime?
+  status                 OrderStatus   @default(DRAFT)
+  priority               OrderPriority @default(MEDIUM)
+  notes                  String?
+  internalNotes          String?
+  assignedToId           String?
+  assignedTo             User?         @relation("AssignedOrders", fields: [assignedToId], references: [id])
+
+  subtotalPaise Int @default(0)
+  discountPaise Int @default(0)
+  taxPaise      Int @default(0)
+  shippingPaise Int @default(0)
+  totalPaise    Int @default(0)
+
+  items          OrderItem[]
+  productionJobs ProductionJob[]
+  delivery       Delivery?
+  tasks          Task[]
+  notesList      Note[]
+  events         CalendarEvent[]
+  activityLogs   ActivityLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([status])
+}
+
+model OrderItem {
+  id              String   @id @default(cuid())
+  orderId         String
+  order           Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId       String?
+  product         Product? @relation(fields: [productId], references: [id])
+  name            String
+  description     String?
+  quantity        Float    @default(1)
+  ratePaise       Int
+  discountPercent Float    @default(0)
+  gstRate         Float    @default(0)
+  amountPaise     Int
+  sortOrder       Int      @default(0)
+
+  @@index([orderId])
+}
+
+model ProductionJob {
+  id                     String           @id @default(cuid())
+  number                 String           @unique // e.g. PROD-2026-0001
+  orderId                String
+  order                  Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customerId             String
+  customer               Customer         @relation(fields: [customerId], references: [id])
+  productId              String?
+  product                Product?         @relation(fields: [productId], references: [id])
+  itemName               String
+  quantity               Float            @default(1)
+  assignedToId           String?
+  assignedTo             User?            @relation("AssignedProductionJobs", fields: [assignedToId], references: [id])
+  startDate              DateTime?
+  expectedCompletionDate DateTime?
+  actualCompletionDate   DateTime?
+  priority               OrderPriority    @default(MEDIUM)
+  status                 ProductionStatus @default(PENDING)
+  internalNotes          String?
+
+  history      ProductionJobHistory[]
+  tasks        Task[]
+  activityLogs ActivityLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([customerId])
+  @@index([status])
+}
+
+model ProductionJobHistory {
+  id              String           @id @default(cuid())
+  productionJobId String
+  productionJob   ProductionJob   @relation(fields: [productionJobId], references: [id], onDelete: Cascade)
+  status          ProductionStatus
+  notes           String?
+  changedById     String?
+  changedBy       User?            @relation("ProductionHistories", fields: [changedById], references: [id])
+  createdAt       DateTime         @default(now())
+
+  @@index([productionJobId])
+}
+
+model Delivery {
+  id              String         @id @default(cuid())
+  number          String         @unique // e.g. DEL-2026-0001
+  orderId         String         @unique
+  order           Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customerId      String
+  customer        Customer       @relation(fields: [customerId], references: [id])
+  deliveryAddress String
+  contactNumber   String
+  deliveryDate    DateTime
+  deliveryMethod  DeliveryMethod @default(COURIER)
+  trackingNumber  String?
+  assignedPerson  String?
+  notes           String?
+  status          DeliveryStatus @default(PENDING)
+
+  history      DeliveryStatusHistory[]
+  activityLogs ActivityLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([status])
+}
+
+model DeliveryStatusHistory {
+  id         String         @id @default(cuid())
+  deliveryId String
+  delivery   Delivery       @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  status     DeliveryStatus
+  notes      String?
+  createdAt  DateTime       @default(now())
+
+  @@index([deliveryId])
+}
+
+model Invoice {
+  id          String        @id @default(cuid())
+  number      String        @unique
+  customerId  String
+  customer    Customer      @relation(fields: [customerId], references: [id])
+  invoiceDate DateTime
+  dueDate     DateTime
+  status      InvoiceStatus @default(DRAFT)
+  notes       String?
+  terms       String?
+
+  subtotalPaise   Int @default(0)
+  discountPaise   Int @default(0)
+  taxPaise        Int @default(0)
+  shippingPaise   Int @default(0)
+  totalPaise      Int @default(0)
+  amountPaidPaise Int @default(0)
+
+  // the quotation this invoice was converted from, if any
+  sourceQuotationId String?    @unique
+  sourceQuotation   Quotation? @relation("QuotationConversion", fields: [sourceQuotationId], references: [id])
+
+  items        InvoiceItem[]
+  payments     Payment[]
+  tasks        Task[]
+  activityLogs ActivityLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([status])
+}
+
+model InvoiceItem {
+  id              String   @id @default(cuid())
+  invoiceId       String
+  invoice         Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  productId       String?
+  product         Product? @relation(fields: [productId], references: [id])
+  name            String
+  description     String?
+  quantity        Float    @default(1)
+  ratePaise       Int
+  discountPercent Float    @default(0)
+  gstRate         Float    @default(0)
+  amountPaise     Int
+  sortOrder       Int      @default(0)
+
+  @@index([invoiceId])
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  customerId      String
+  customer        Customer      @relation(fields: [customerId], references: [id])
+  invoiceId       String
+  invoice         Invoice       @relation(fields: [invoiceId], references: [id])
+  paymentDate     DateTime
+  amountPaise     Int
+  method          PaymentMethod
+  referenceNumber String?
+  notes           String?
+  createdAt       DateTime      @default(now())
+
+  activityLogs ActivityLog[]
+
+  @@index([customerId])
+  @@index([invoiceId])
+}
+
+model Task {
+  id          String       @id @default(cuid())
+  title       String
+  description String?
+  status      TaskStatus   @default(TODO)
+  priority    TaskPriority @default(MEDIUM)
+  dueDate     DateTime?
+  dueTime     String?
+  tags        String?
+  reminder    DateTime?
+
+  assignedToId String?
+  assignedTo   User?   @relation("AssignedTasks", fields: [assignedToId], references: [id])
+
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+
+  orderId String?
+  order   Order?   @relation(fields: [orderId], references: [id])
+
+  quotationId String?
+  quotation   Quotation? @relation(fields: [quotationId], references: [id])
+
+  invoiceId String?
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id])
+
+  productionJobId String?
+  productionJob   ProductionJob? @relation(fields: [productionJobId], references: [id])
+
+  events CalendarEvent[]
+
+  activityLogs ActivityLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([priority])
+  @@index([dueDate])
+  @@index([customerId])
+}
+
+model CalendarEvent {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  startDate   DateTime
+  startTime   String?
+  endDate     DateTime
+  endTime     String?
+
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+
+  orderId String?
+  order   Order?   @relation(fields: [orderId], references: [id])
+
+  taskId String?
+  task   Task?   @relation(fields: [taskId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([startDate])
+}
+
+model Note {
+  id      String  @id @default(cuid())
+  title   String
+  content String
+  tags    String?
+  pinned  Boolean @default(false)
+
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+
+  orderId String?
+  order   Order?   @relation(fields: [orderId], references: [id])
+
+  taskId String?
+  task   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([pinned])
+  @@index([customerId])
+  @@index([orderId])
+}
+
+model Vendor {
+  id            String       @id @default(cuid())
+  businessName  String
+  contactPerson String?
+  phone         String
+  whatsapp      String?
+  email         String?
+  gstin         String?
+  address       String?
+  city          String?
+  state         String?
+  pincode       String?
+  notes         String?
+  tags          String?
+  status        VendorStatus @default(ACTIVE)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  expenses     Expense[]
+  activityLogs ActivityLog[]
+
+  @@index([status])
+  @@index([businessName])
+}
+
+model ExpenseCategory {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  expenses Expense[]
+}
+
+model Expense {
+  id               String          @id @default(cuid())
+  number           String          @unique // e.g. EXP-2026-0001
+  date             DateTime
+  vendorId         String?
+  vendor           Vendor?         @relation(fields: [vendorId], references: [id])
+  categoryId       String
+  category         ExpenseCategory @relation(fields: [categoryId], references: [id])
+  description      String
+  baseAmountPaise  Int
+  gstRate          Float           @default(0)
+  gstAmountPaise   Int             @default(0)
+  totalAmountPaise Int
+  paymentMethod    PaymentMethod   @default(CASH)
+  paymentAccount   String?
+  referenceNumber  String?
+  receiptUrl       String?
+  notes            String?
+  status           ExpenseStatus   @default(RECORDED)
+
+  activityLogs ActivityLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+  @@index([status])
+  @@index([vendorId])
+  @@index([categoryId])
+}
+
+model Attachment {
+  id         String   @id @default(cuid())
+  fileName   String
+  fileUrl    String
+  fileSize   Int?
+  mimeType   String?
+  entityType String   // "expense" | "vendor" | "order" | "customer"
+  entityId   String
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+}
+
+model ActivityLog {
+  id         String   @id @default(cuid())
+  type       String
+  message    String
+  entityType String
+  entityId   String
+
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+
+  quotationId String?
+  quotation   Quotation? @relation(fields: [quotationId], references: [id])
+
+  orderId String?
+  order   Order?   @relation(fields: [orderId], references: [id])
+
+  productionJobId String?
+  productionJob   ProductionJob? @relation(fields: [productionJobId], references: [id])
+
+  deliveryId String?
+  delivery   Delivery? @relation(fields: [deliveryId], references: [id])
+
+  invoiceId String?
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id])
+
+  paymentId String?
+  payment   Payment? @relation(fields: [paymentId], references: [id])
+
+  expenseId String?
+  expense   Expense? @relation(fields: [expenseId], references: [id])
+
+  vendorId String?
+  vendor   Vendor?  @relation(fields: [vendorId], references: [id])
+
+  taskId String?
+  task   Task?   @relation(fields: [taskId], references: [id])
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([customerId])
+  @@index([orderId])
+  @@index([vendorId])
+}
+
+model CompanySettings {
+  id String @id @default(cuid())
+
+  name    String  @default("Priinteve")
+  logoUrl String?
+  tagline String?
+
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  state        String?
+  pincode      String?
+  phone        String?
+  email        String?
+  website      String?
+  gstin        String?
+  pan          String?
+
+  bankName          String?
+  bankAccountName   String?
+  bankAccountNumber String?
+  bankIfsc          String?
+  bankBranch        String?
+
+  quotationTerms String?
+  invoiceTerms   String?
+
+  defaultGstRate      Float @default(18)
+  defaultValidityDays Int   @default(15)
+  defaultDueDays      Int   @default(15)
+
+  updatedAt DateTime @updatedAt
+}
+
+model NumberingSequence {
+  id         String @id @default(cuid())
+  key        String @unique // "quotation" | "invoice" | "order" | "production" | "delivery" | "expense"
+  prefix     String
+  year       Int
+  nextNumber Int    @default(1)
+  padding    Int    @default(4)
+}

@@ -1,0 +1,167 @@
+import Link from "next/link";
+import { Plus, Users, Eye, Pencil } from "lucide-react";
+import { PageHeader } from "@/components/shared/page-header";
+import { EmptyState } from "@/components/shared/empty-state";
+import { TableToolbar } from "@/components/shared/table-toolbar";
+import { TableFilterSelect } from "@/components/shared/table-filter-select";
+import { TablePagination } from "@/components/shared/table-pagination";
+import { RowActions } from "@/components/shared/row-actions";
+import { CustomerStatusBadge } from "@/components/shared/status-badge";
+import { DeleteCustomerItem } from "@/components/customers/delete-customer-item";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { listCustomers } from "@/lib/services/customers";
+import { formatCurrency } from "@/lib/money";
+import { formatDate, initials } from "@/lib/format";
+import type { CustomerStatus } from "@prisma/client";
+
+export const metadata = { title: "Customers" };
+
+export default async function CustomersPage({
+  searchParams,
+}: PageProps<"/customers">) {
+  const sp = await searchParams;
+  const q = typeof sp.q === "string" ? sp.q : undefined;
+  const status = typeof sp.status === "string" ? (sp.status as CustomerStatus) : undefined;
+  const page = typeof sp.page === "string" ? Number(sp.page) : 1;
+
+  const { customers, total, pageSize } = await listCustomers({ q, status, page });
+  const isFiltered = Boolean(q || status);
+
+  return (
+    <div>
+      <PageHeader
+        title="Customers"
+        description="Everyone you do business with — individuals and companies."
+        actions={
+          <Button asChild>
+            <Link href="/customers/new">
+              <Plus className="size-4" /> Add Customer
+            </Link>
+          </Button>
+        }
+      />
+
+      <div className="rounded-lg border bg-card">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
+          <TableToolbar placeholder="Search by name, phone, email, GSTIN…">
+            <TableFilterSelect
+              paramName="status"
+              placeholder="All statuses"
+              options={[
+                { value: "ACTIVE", label: "Active" },
+                { value: "INACTIVE", label: "Inactive" },
+              ]}
+            />
+          </TableToolbar>
+        </div>
+
+        {customers.length === 0 ? (
+          <EmptyState
+            icon={Users}
+            title={isFiltered ? "No customers match your filters" : "No customers yet"}
+            description={
+              isFiltered
+                ? "Try a different search term or clear filters."
+                : "Add your first customer to start creating quotations and invoices."
+            }
+            action={
+              !isFiltered && (
+                <Button asChild size="sm">
+                  <Link href="/customers/new">
+                    <Plus className="size-4" /> Add Customer
+                  </Link>
+                </Button>
+              )
+            }
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Phone</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead className="text-right">Total Business</TableHead>
+                  <TableHead className="text-right">Outstanding</TableHead>
+                  <TableHead>Last Transaction</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="w-10" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {customers.map((customer) => (
+                  <TableRow key={customer.id}>
+                    <TableCell>
+                      <Link href={`/customers/${customer.id}`} className="flex items-center gap-2.5 py-1">
+                        <Avatar className="size-8">
+                          <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
+                            {initials(customer.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{customer.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {customer.type === "BUSINESS" ? "Business" : "Individual"}
+                          </p>
+                        </div>
+                      </Link>
+                    </TableCell>
+                    <TableCell className="text-sm">{customer.phone}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{customer.email || "—"}</TableCell>
+                    <TableCell className="text-right text-sm font-medium">
+                      {formatCurrency(customer.totalBusinessPaise)}
+                    </TableCell>
+                    <TableCell className="text-right text-sm">
+                      {customer.outstandingPaise > 0 ? (
+                        <span className="font-medium text-destructive">
+                          {formatCurrency(customer.outstandingPaise)}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">₹0.00</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {formatDate(customer.lastTransactionAt)}
+                    </TableCell>
+                    <TableCell>
+                      <CustomerStatusBadge status={customer.status} />
+                    </TableCell>
+                    <TableCell>
+                      <RowActions>
+                        <DropdownMenuItem asChild>
+                          <Link href={`/customers/${customer.id}`}>
+                            <Eye className="size-4" /> View
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link href={`/customers/${customer.id}/edit`}>
+                            <Pencil className="size-4" /> Edit
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DeleteCustomerItem customerId={customer.id} customerName={customer.name} />
+                      </RowActions>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+
+        <TablePagination page={page} pageSize={pageSize} total={total} />
+      </div>
+    </div>
+  );
+}
