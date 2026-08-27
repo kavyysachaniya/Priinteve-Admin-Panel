@@ -10,3 +10,4 @@ export default async function VendorsLayout({ children }: { children: React.Reac
 
   return <>{children}</>;
 }
+

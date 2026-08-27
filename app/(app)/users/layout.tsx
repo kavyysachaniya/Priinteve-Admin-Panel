@@ -10,3 +10,4 @@ export default async function UsersLayout({ children }: { children: React.ReactN
 
   return <>{children}</>;
 }
+
