@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { PageHeader } from "@/components/shared/page-header";
 import { InvoiceForm } from "@/components/invoices/invoice-form";
 import { listAllActiveCustomers } from "@/lib/services/customers";

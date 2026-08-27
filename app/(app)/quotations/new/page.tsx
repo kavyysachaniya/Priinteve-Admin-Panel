@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { PageHeader } from "@/components/shared/page-header";
 import { QuotationForm } from "@/components/quotations/quotation-form";
 import { listAllActiveCustomers } from "@/lib/services/customers";

@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { notFound } from "next/navigation";
 import { getProductionJobDetail } from "@/lib/services/production";
 import { ProductionDetail } from "@/components/production/production-detail";

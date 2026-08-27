@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { notFound } from "next/navigation";
 import { getNoteDetail, noteToFormValues } from "@/lib/services/notes";
 import { NoteForm } from "@/components/notes/note-form";

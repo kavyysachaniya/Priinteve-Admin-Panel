@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { PageHeader } from "@/components/shared/page-header";
 import { CustomerForm } from "@/components/customers/customer-form";
 

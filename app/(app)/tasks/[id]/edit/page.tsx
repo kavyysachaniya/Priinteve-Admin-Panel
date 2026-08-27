@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { notFound } from "next/navigation";
 import { getTaskDetail, taskToFormValues } from "@/lib/services/tasks";
 import { TaskForm } from "@/components/tasks/task-form";

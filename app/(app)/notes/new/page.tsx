@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { PageHeader } from "@/components/shared/page-header";
 import { NoteForm } from "@/components/notes/note-form";
 

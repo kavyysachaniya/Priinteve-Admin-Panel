@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { notFound } from "next/navigation";
 import { getOrderDetail, orderToFormValues } from "@/lib/services/orders";
 import { listAllActiveCustomers } from "@/lib/services/customers";

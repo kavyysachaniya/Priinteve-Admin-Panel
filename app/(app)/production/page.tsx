@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { PageHeader } from "@/components/shared/page-header";
 import { ProductionKanban } from "@/components/production/production-kanban";
 import { ProductionList } from "@/components/production/production-list";

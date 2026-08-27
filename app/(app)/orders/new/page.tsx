@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { PageHeader } from "@/components/shared/page-header";
 import { OrderForm } from "@/components/orders/order-form";
 import { listAllActiveCustomers } from "@/lib/services/customers";

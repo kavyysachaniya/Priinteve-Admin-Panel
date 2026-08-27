@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { PageHeader } from "@/components/shared/page-header";
 import { ExpenseForm } from "@/components/expenses/expense-form";
 import { listExpenseCategories } from "@/lib/services/expenses";

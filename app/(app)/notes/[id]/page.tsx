@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { notFound } from "next/navigation";
 import { getNoteDetail } from "@/lib/services/notes";
 import { NoteDetail } from "@/components/notes/note-detail";

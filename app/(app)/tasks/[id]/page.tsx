@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { notFound } from "next/navigation";
 import { getTaskDetail } from "@/lib/services/tasks";
 import { TaskDetail } from "@/components/tasks/task-detail";

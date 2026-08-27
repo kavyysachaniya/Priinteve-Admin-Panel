@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { CalendarView } from "@/components/calendar/calendar-view";
 import { PageHeader } from "@/components/shared/page-header";
 import { listCalendarEvents } from "@/lib/services/calendar";

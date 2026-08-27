@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { Plus, Package, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";

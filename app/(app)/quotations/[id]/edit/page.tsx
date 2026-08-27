@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/shared/page-header";
 import { QuotationForm } from "@/components/quotations/quotation-form";

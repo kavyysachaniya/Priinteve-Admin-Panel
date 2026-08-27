@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { PageHeader } from "@/components/shared/page-header";
 import { DeliveryList } from "@/components/deliveries/delivery-list";
 import { TableFilterSelect } from "@/components/shared/table-filter-select";

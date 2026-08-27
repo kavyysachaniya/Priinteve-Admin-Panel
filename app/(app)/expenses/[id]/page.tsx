@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { notFound } from "next/navigation";
 import { getExpenseDetail } from "@/lib/services/expenses";
 import { ExpenseDetail } from "@/components/expenses/expense-detail";

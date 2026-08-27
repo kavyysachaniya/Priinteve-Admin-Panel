@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { PageHeader } from "@/components/shared/page-header";
 import { PlannerWorkspace } from "@/components/planner/planner-workspace";
 import { getPlannerDataForDate } from "@/lib/services/calendar";

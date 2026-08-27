@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { redirect } from "next/navigation";
 
 // Products don't have a standalone detail view in Phase 1 — editing is the

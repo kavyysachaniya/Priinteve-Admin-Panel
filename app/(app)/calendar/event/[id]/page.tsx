@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { notFound } from "next/navigation";
 import { getCalendarEventDetail } from "@/lib/services/calendar";
 import { PageHeader } from "@/components/shared/page-header";

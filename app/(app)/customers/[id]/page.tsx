@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Pencil, FileText, ReceiptText, Mail, Phone, MapPin, Building2, ShoppingBag, CheckSquare, StickyNote } from "lucide-react";

@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { notFound } from "next/navigation";
 import { getExpenseDetail, expenseToFormValues, listExpenseCategories } from "@/lib/services/expenses";
 import { listAllActiveVendors } from "@/lib/services/vendors";
