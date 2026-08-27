@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { prisma, TX_OPTIONS } from "@/lib/prisma";
 import { rupeesToPaise } from "@/lib/money";
 import { logActivity } from "@/lib/services/activity";
 import type { PaymentFormValues } from "@/lib/validations/payment";
@@ -133,7 +133,7 @@ export async function createPayment(data: PaymentFormValues) {
     }
 
     return payment;
-  });
+  }, TX_OPTIONS);
 }
 
 export async function getPaymentDetail(id: string) {
@@ -171,5 +171,5 @@ export async function deletePayment(id: string) {
       },
       tx
     );
-  });
+  }, TX_OPTIONS);
 }

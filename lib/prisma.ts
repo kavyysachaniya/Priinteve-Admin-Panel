@@ -13,3 +13,10 @@ export const prisma =
   });
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+
+/** Standard transaction configuration for Neon serverless auto-wake resilience */
+export const TX_OPTIONS = {
+  maxWait: 10000, // 10s wait for connection (handles Neon compute node cold-starts)
+  timeout: 15000, // 15s execution timeout
+};
+

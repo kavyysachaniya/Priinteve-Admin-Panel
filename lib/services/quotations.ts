@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { prisma, TX_OPTIONS } from "@/lib/prisma";
 import { computeDocumentTotals, computeLineItem, rupeesToPaise, paiseToRupees } from "@/lib/money";
 import { issueDocumentNumber } from "@/lib/services/numbering";
 import { logActivity } from "@/lib/services/activity";
@@ -140,7 +140,7 @@ export async function createQuotation(data: QuotationFormValues) {
     );
 
     return quotation;
-  });
+  }, TX_OPTIONS);
 }
 
 export async function updateQuotation(id: string, data: QuotationFormValues) {
@@ -205,7 +205,7 @@ export async function updateQuotation(id: string, data: QuotationFormValues) {
     );
 
     return quotation;
-  });
+  }, TX_OPTIONS);
 }
 
 export async function changeQuotationStatus(id: string, next: QuotationStatus) {
@@ -307,7 +307,7 @@ export async function convertQuotationToInvoice(id: string) {
     );
 
     return invoice;
-  });
+  }, TX_OPTIONS);
 }
 
 export async function duplicateQuotation(id: string) {
@@ -363,7 +363,7 @@ export async function duplicateQuotation(id: string) {
     );
 
     return quotation;
-  });
+  }, TX_OPTIONS);
 }
 
 export async function deleteQuotation(id: string) {

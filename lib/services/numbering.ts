@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { prisma, TX_OPTIONS } from "@/lib/prisma";
 import type { Prisma, PrismaClient } from "@prisma/client";
 
 type TxClient = Omit<PrismaClient, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
@@ -75,17 +75,17 @@ export async function updateSequencePrefix(key: SequenceKey, prefix: string) {
 }
 
 export async function generateOrderNumber() {
-  return prisma.$transaction((tx) => issueDocumentNumber(tx, "order"));
+  return prisma.$transaction((tx) => issueDocumentNumber(tx, "order"), TX_OPTIONS);
 }
 
 export async function generateExpenseNumber() {
-  return prisma.$transaction((tx) => issueDocumentNumber(tx, "expense"));
+  return prisma.$transaction((tx) => issueDocumentNumber(tx, "expense"), TX_OPTIONS);
 }
 
 export async function generateProductionNumber() {
-  return prisma.$transaction((tx) => issueDocumentNumber(tx, "production"));
+  return prisma.$transaction((tx) => issueDocumentNumber(tx, "production"), TX_OPTIONS);
 }
 
 export async function generateDeliveryNumber() {
-  return prisma.$transaction((tx) => issueDocumentNumber(tx, "delivery"));
+  return prisma.$transaction((tx) => issueDocumentNumber(tx, "delivery"), TX_OPTIONS);
 }

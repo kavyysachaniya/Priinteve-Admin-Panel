@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { prisma, TX_OPTIONS } from "@/lib/prisma";
 import { computeDocumentTotals, computeLineItem, rupeesToPaise, paiseToRupees } from "@/lib/money";
 import { issueDocumentNumber } from "@/lib/services/numbering";
 import { logActivity } from "@/lib/services/activity";
@@ -164,7 +164,7 @@ export async function createInvoice(data: InvoiceFormValues) {
     );
 
     return invoice;
-  });
+  }, TX_OPTIONS);
 }
 
 function assertEditable(invoice: Invoice) {
@@ -219,7 +219,7 @@ export async function updateInvoice(id: string, data: InvoiceFormValues) {
     );
 
     return invoice;
-  });
+  }, TX_OPTIONS);
 }
 
 export async function markInvoiceSent(id: string) {

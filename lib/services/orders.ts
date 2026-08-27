@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { prisma, TX_OPTIONS } from "@/lib/prisma";
 import { generateOrderNumber, issueDocumentNumber } from "@/lib/services/numbering";
 import { logActivity } from "@/lib/services/activity";
 import type { OrderFormValues } from "@/lib/validations/order";
@@ -155,7 +155,7 @@ export async function createOrder(data: OrderFormValues) {
     }
 
     return o;
-  });
+  }, TX_OPTIONS);
 
   await logActivity({
     type: "order.created",
@@ -246,7 +246,7 @@ export async function convertQuotationToOrder(quotationId: string) {
     );
 
     return order;
-  });
+  }, TX_OPTIONS);
 }
 
 export async function updateOrder(id: string, data: OrderFormValues) {
@@ -280,7 +280,7 @@ export async function updateOrder(id: string, data: OrderFormValues) {
     });
 
     return updated;
-  });
+  }, TX_OPTIONS);
 
   await logActivity({
     type: "order.updated",
