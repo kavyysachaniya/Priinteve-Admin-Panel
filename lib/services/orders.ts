@@ -14,58 +14,68 @@ export interface ListOrdersParams {
 }
 
 export async function listOrders(params: ListOrdersParams) {
-  const page = Math.max(1, params.page ?? 1);
-  const where: Prisma.OrderWhereInput = {
-    ...(params.status ? { status: params.status } : {}),
-    ...(params.customerId ? { customerId: params.customerId } : {}),
-    ...(params.q
-      ? {
-          OR: [
-            { number: { contains: params.q } },
-            { notes: { contains: params.q } },
-            { customer: { name: { contains: params.q } } },
-          ],
-        }
-      : {}),
-  };
+  try {
+    const page = Math.max(1, params.page ?? 1);
+    const where: Prisma.OrderWhereInput = {
+      ...(params.status ? { status: params.status } : {}),
+      ...(params.customerId ? { customerId: params.customerId } : {}),
+      ...(params.q
+        ? {
+            OR: [
+              { number: { contains: params.q } },
+              { notes: { contains: params.q } },
+              { customer: { name: { contains: params.q } } },
+            ],
+          }
+        : {}),
+    };
 
-  const [orders, total] = await Promise.all([
-    prisma.order.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-      include: {
-        customer: { select: { id: true, name: true } },
-        productionJobs: { select: { id: true, status: true } },
-      },
-    }),
-    prisma.order.count({ where }),
-  ]);
+    const [orders, total] = await Promise.all([
+      prisma.order.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * PAGE_SIZE,
+        take: PAGE_SIZE,
+        include: {
+          customer: { select: { id: true, name: true } },
+          productionJobs: { select: { id: true, status: true } },
+        },
+      }),
+      prisma.order.count({ where }),
+    ]);
 
-  return { orders, total, page, pageSize: PAGE_SIZE };
+    return { orders, total, page, pageSize: PAGE_SIZE };
+  } catch (err) {
+    console.error("Error in listOrders:", err);
+    return { orders: [], total: 0, page: 1, pageSize: PAGE_SIZE };
+  }
 }
 
 export async function getOrderDetail(id: string) {
-  const order = await prisma.order.findUnique({
-    where: { id },
-    include: {
-      customer: { select: { id: true, name: true, phone: true, email: true, gstin: true } },
-      items: { include: { product: { select: { id: true, name: true } } } },
-      productionJobs: { orderBy: { createdAt: "asc" } },
-      delivery: true,
-      sourceQuotation: { select: { id: true, number: true } },
-    },
-  });
-  if (!order) return null;
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id },
+      include: {
+        customer: { select: { id: true, name: true, phone: true, email: true, gstin: true } },
+        items: { include: { product: { select: { id: true, name: true } } } },
+        productionJobs: { orderBy: { createdAt: "asc" } },
+        delivery: true,
+        sourceQuotation: { select: { id: true, number: true } },
+      },
+    });
+    if (!order) return null;
 
-  const activityLogs = await prisma.activityLog.findMany({
-    where: { orderId: id },
-    orderBy: { createdAt: "desc" },
-    take: 30,
-  });
+    const activityLogs = await prisma.activityLog.findMany({
+      where: { orderId: id },
+      orderBy: { createdAt: "desc" },
+      take: 30,
+    });
 
-  return { ...order, activityLogs };
+    return { ...order, activityLogs };
+  } catch (err) {
+    console.error("Error in getOrderDetail:", err);
+    return null;
+  }
 }
 
 export function orderToFormValues(order: any): OrderFormValues {

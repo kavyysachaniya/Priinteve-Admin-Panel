@@ -12,86 +12,101 @@ export interface ListVendorsParams {
 }
 
 export async function listVendors(params: ListVendorsParams) {
-  const page = Math.max(1, params.page ?? 1);
-  const where: Prisma.VendorWhereInput = {
-    ...(params.status ? { status: params.status } : {}),
-    ...(params.q
-      ? {
-          OR: [
-            { businessName: { contains: params.q } },
-            { contactPerson: { contains: params.q } },
-            { phone: { contains: params.q } },
-            { email: { contains: params.q } },
-            { gstin: { contains: params.q } },
-          ],
-        }
-      : {}),
-  };
-
-  const [vendors, total] = await Promise.all([
-    prisma.vendor.findMany({
-      where,
-      orderBy: { businessName: "asc" },
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-      include: {
-        expenses: {
-          select: { totalAmountPaise: true, status: true },
-        },
-      },
-    }),
-    prisma.vendor.count({ where }),
-  ]);
-
-  const vendorsWithTotals = vendors.map((v) => {
-    const recordedExpenses = v.expenses.filter((e) => e.status === "RECORDED");
-    const totalExpensesPaise = recordedExpenses.reduce((sum, e) => sum + e.totalAmountPaise, 0);
-    return {
-      ...v,
-      totalExpensesPaise,
-      transactionCount: recordedExpenses.length,
+  try {
+    const page = Math.max(1, params.page ?? 1);
+    const where: Prisma.VendorWhereInput = {
+      ...(params.status ? { status: params.status } : {}),
+      ...(params.q
+        ? {
+            OR: [
+              { businessName: { contains: params.q } },
+              { contactPerson: { contains: params.q } },
+              { phone: { contains: params.q } },
+              { email: { contains: params.q } },
+              { gstin: { contains: params.q } },
+            ],
+          }
+        : {}),
     };
-  });
 
-  return { vendors: vendorsWithTotals, total, page, pageSize: PAGE_SIZE };
+    const [vendors, total] = await Promise.all([
+      prisma.vendor.findMany({
+        where,
+        orderBy: { businessName: "asc" },
+        skip: (page - 1) * PAGE_SIZE,
+        take: PAGE_SIZE,
+        include: {
+          expenses: {
+            select: { totalAmountPaise: true, status: true },
+          },
+        },
+      }),
+      prisma.vendor.count({ where }),
+    ]);
+
+    const vendorsWithTotals = vendors.map((v) => {
+      const recordedExpenses = v.expenses.filter((e) => e.status === "RECORDED");
+      const totalExpensesPaise = recordedExpenses.reduce((sum, e) => sum + e.totalAmountPaise, 0);
+      return {
+        ...v,
+        totalExpensesPaise,
+        transactionCount: recordedExpenses.length,
+      };
+    });
+
+    return { vendors: vendorsWithTotals, total, page, pageSize: PAGE_SIZE };
+  } catch (err) {
+    console.error("Error in listVendors:", err);
+    return { vendors: [], total: 0, page: 1, pageSize: PAGE_SIZE };
+  }
 }
 
 export async function listAllActiveVendors() {
-  return prisma.vendor.findMany({
-    where: { status: "ACTIVE" },
-    orderBy: { businessName: "asc" },
-    select: { id: true, businessName: true, phone: true, email: true, gstin: true },
-  });
+  try {
+    return await prisma.vendor.findMany({
+      where: { status: "ACTIVE" },
+      orderBy: { businessName: "asc" },
+      select: { id: true, businessName: true, phone: true, email: true, gstin: true },
+    });
+  } catch (err) {
+    console.error("Error in listAllActiveVendors:", err);
+    return [];
+  }
 }
 
 export async function getVendorDetail(id: string) {
-  const vendor = await prisma.vendor.findUnique({
-    where: { id },
-    include: {
-      expenses: {
-        orderBy: { date: "desc" },
-        include: { category: { select: { id: true, name: true } } },
+  try {
+    const vendor = await prisma.vendor.findUnique({
+      where: { id },
+      include: {
+        expenses: {
+          orderBy: { date: "desc" },
+          include: { category: { select: { id: true, name: true } } },
+        },
       },
-    },
-  });
-  if (!vendor) return null;
+    });
+    if (!vendor) return null;
 
-  const activityLogs = await prisma.activityLog.findMany({
-    where: { vendorId: id },
-    orderBy: { createdAt: "desc" },
-    take: 30,
-  });
+    const activityLogs = await prisma.activityLog.findMany({
+      where: { vendorId: id },
+      orderBy: { createdAt: "desc" },
+      take: 30,
+    });
 
-  const recordedExpenses = vendor.expenses.filter((e) => e.status === "RECORDED");
-  const totalExpensesPaise = recordedExpenses.reduce((sum, e) => sum + e.totalAmountPaise, 0);
+    const recordedExpenses = vendor.expenses.filter((e) => e.status === "RECORDED");
+    const totalExpensesPaise = recordedExpenses.reduce((sum, e) => sum + e.totalAmountPaise, 0);
 
-  return {
-    ...vendor,
-    totalExpensesPaise,
-    transactionCount: recordedExpenses.length,
-    latestExpense: vendor.expenses[0] ?? null,
-    activityLogs,
-  };
+    return {
+      ...vendor,
+      totalExpensesPaise,
+      transactionCount: recordedExpenses.length,
+      latestExpense: vendor.expenses[0] ?? null,
+      activityLogs,
+    };
+  } catch (err) {
+    console.error("Error in getVendorDetail:", err);
+    return null;
+  }
 }
 
 export function vendorToFormValues(vendor: any): VendorFormValues {

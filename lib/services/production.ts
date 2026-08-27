@@ -12,57 +12,67 @@ export interface ListProductionJobsParams {
 }
 
 export async function listProductionJobs(params: ListProductionJobsParams) {
-  const page = Math.max(1, params.page ?? 1);
-  const where: Prisma.ProductionJobWhereInput = {
-    ...(params.stage ? { status: params.stage } : {}),
-    ...(params.orderId ? { orderId: params.orderId } : {}),
-    ...(params.q
-      ? {
-          OR: [
-            { number: { contains: params.q } },
-            { itemName: { contains: params.q } },
-            { order: { number: { contains: params.q } } },
-            { order: { customer: { name: { contains: params.q } } } },
-          ],
-        }
-      : {}),
-  };
+  try {
+    const page = Math.max(1, params.page ?? 1);
+    const where: Prisma.ProductionJobWhereInput = {
+      ...(params.stage ? { status: params.stage } : {}),
+      ...(params.orderId ? { orderId: params.orderId } : {}),
+      ...(params.q
+        ? {
+            OR: [
+              { number: { contains: params.q } },
+              { itemName: { contains: params.q } },
+              { order: { number: { contains: params.q } } },
+              { order: { customer: { name: { contains: params.q } } } },
+            ],
+          }
+        : {}),
+    };
 
-  const [jobs, total] = await Promise.all([
-    prisma.productionJob.findMany({
-      where,
-      orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-      include: {
-        order: { select: { id: true, number: true, customer: { select: { name: true } } } },
-        assignedTo: { select: { id: true, name: true } },
-      },
-    }),
-    prisma.productionJob.count({ where }),
-  ]);
+    const [jobs, total] = await Promise.all([
+      prisma.productionJob.findMany({
+        where,
+        orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
+        skip: (page - 1) * PAGE_SIZE,
+        take: PAGE_SIZE,
+        include: {
+          order: { select: { id: true, number: true, customer: { select: { name: true } } } },
+          assignedTo: { select: { id: true, name: true } },
+        },
+      }),
+      prisma.productionJob.count({ where }),
+    ]);
 
-  return { jobs, total, page, pageSize: PAGE_SIZE };
+    return { jobs, total, page, pageSize: PAGE_SIZE };
+  } catch (err) {
+    console.error("Error in listProductionJobs:", err);
+    return { jobs: [], total: 0, page: 1, pageSize: PAGE_SIZE };
+  }
 }
 
 export async function getProductionJobDetail(id: string) {
-  const job = await prisma.productionJob.findUnique({
-    where: { id },
-    include: {
-      order: { select: { id: true, number: true, notes: true, customer: { select: { name: true } } } },
-      assignedTo: { select: { id: true, name: true } },
-      history: { orderBy: { createdAt: "desc" } },
-    },
-  });
-  if (!job) return null;
+  try {
+    const job = await prisma.productionJob.findUnique({
+      where: { id },
+      include: {
+        order: { select: { id: true, number: true, notes: true, customer: { select: { name: true } } } },
+        assignedTo: { select: { id: true, name: true } },
+        history: { orderBy: { createdAt: "desc" } },
+      },
+    });
+    if (!job) return null;
 
-  const activityLogs = await prisma.activityLog.findMany({
-    where: { productionJobId: id },
-    orderBy: { createdAt: "desc" },
-    take: 30,
-  });
+    const activityLogs = await prisma.activityLog.findMany({
+      where: { productionJobId: id },
+      orderBy: { createdAt: "desc" },
+      take: 30,
+    });
 
-  return { ...job, activityLogs };
+    return { ...job, activityLogs };
+  } catch (err) {
+    console.error("Error in getProductionJobDetail:", err);
+    return null;
+  }
 }
 
 export async function updateProductionJobStatus(

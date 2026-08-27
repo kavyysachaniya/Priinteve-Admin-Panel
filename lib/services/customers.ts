@@ -12,109 +12,129 @@ export interface ListCustomersParams {
 }
 
 export async function listCustomers(params: ListCustomersParams) {
-  const page = Math.max(1, params.page ?? 1);
-  const where: Prisma.CustomerWhereInput = {
-    ...(params.status ? { status: params.status } : {}),
-    ...(params.q
-      ? {
-          OR: [
-            { name: { contains: params.q } },
-            { phone: { contains: params.q } },
-            { email: { contains: params.q } },
-            { gstin: { contains: params.q } },
-          ],
-        }
-      : {}),
-  };
-
-  const [customers, total] = await Promise.all([
-    prisma.customer.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-      include: {
-        invoices: { select: { totalPaise: true, amountPaidPaise: true, status: true, createdAt: true } },
-        payments: { select: { paymentDate: true } },
-      },
-    }),
-    prisma.customer.count({ where }),
-  ]);
-
-  const rows = customers.map((c) => {
-    const totalBusiness = c.invoices
-      .filter((i) => i.status !== "CANCELLED")
-      .reduce((sum, i) => sum + i.totalPaise, 0);
-    const outstanding = c.invoices
-      .filter((i) => i.status !== "CANCELLED")
-      .reduce((sum, i) => sum + (i.totalPaise - i.amountPaidPaise), 0);
-    const dates = [
-      ...c.invoices.map((i) => i.createdAt),
-      ...c.payments.map((p) => p.paymentDate),
-    ];
-    const lastTransactionAt = dates.length
-      ? new Date(Math.max(...dates.map((d) => d.getTime())))
-      : null;
-    return {
-      ...c,
-      totalBusinessPaise: totalBusiness,
-      outstandingPaise: outstanding,
-      lastTransactionAt,
+  try {
+    const page = Math.max(1, params.page ?? 1);
+    const where: Prisma.CustomerWhereInput = {
+      ...(params.status ? { status: params.status } : {}),
+      ...(params.q
+        ? {
+            OR: [
+              { name: { contains: params.q } },
+              { phone: { contains: params.q } },
+              { email: { contains: params.q } },
+              { gstin: { contains: params.q } },
+            ],
+          }
+        : {}),
     };
-  });
 
-  return { customers: rows, total, page, pageSize: PAGE_SIZE };
+    const [customers, total] = await Promise.all([
+      prisma.customer.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * PAGE_SIZE,
+        take: PAGE_SIZE,
+        include: {
+          invoices: { select: { totalPaise: true, amountPaidPaise: true, status: true, createdAt: true } },
+          payments: { select: { paymentDate: true } },
+        },
+      }),
+      prisma.customer.count({ where }),
+    ]);
+
+    const rows = customers.map((c) => {
+      const totalBusiness = c.invoices
+        .filter((i) => i.status !== "CANCELLED")
+        .reduce((sum, i) => sum + i.totalPaise, 0);
+      const outstanding = c.invoices
+        .filter((i) => i.status !== "CANCELLED")
+        .reduce((sum, i) => sum + (i.totalPaise - i.amountPaidPaise), 0);
+      const dates = [
+        ...c.invoices.map((i) => i.createdAt),
+        ...c.payments.map((p) => p.paymentDate),
+      ];
+      const lastTransactionAt = dates.length
+        ? new Date(Math.max(...dates.map((d) => d.getTime())))
+        : null;
+      return {
+        ...c,
+        totalBusinessPaise: totalBusiness,
+        outstandingPaise: outstanding,
+        lastTransactionAt,
+      };
+    });
+
+    return { customers: rows, total, page, pageSize: PAGE_SIZE };
+  } catch (err) {
+    console.error("Error in listCustomers:", err);
+    return { customers: [], total: 0, page: 1, pageSize: PAGE_SIZE };
+  }
 }
 
 export async function listAllActiveCustomers() {
-  return prisma.customer.findMany({
-    where: { status: "ACTIVE" },
-    orderBy: { name: "asc" },
-    select: { id: true, name: true, phone: true, email: true, type: true, gstin: true },
-  });
+  try {
+    return await prisma.customer.findMany({
+      where: { status: "ACTIVE" },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, phone: true, email: true, type: true, gstin: true },
+    });
+  } catch (err) {
+    console.error("Error in listAllActiveCustomers:", err);
+    return [];
+  }
 }
 
 export async function getCustomerById(id: string) {
-  return prisma.customer.findUnique({ where: { id } });
+  try {
+    return await prisma.customer.findUnique({ where: { id } });
+  } catch (err) {
+    console.error("Error in getCustomerById:", err);
+    return null;
+  }
 }
 
 export async function getCustomerWithFinancials(id: string) {
-  const customer = await prisma.customer.findUnique({
-    where: { id },
-    include: {
-      invoices: { orderBy: { createdAt: "desc" } },
-      quotations: { orderBy: { createdAt: "desc" } },
-      payments: { orderBy: { paymentDate: "desc" }, include: { invoice: { select: { number: true } } } },
-      orders: { orderBy: { createdAt: "desc" } },
-      tasks: { orderBy: { createdAt: "desc" } },
-      notesList: { orderBy: { createdAt: "desc" } },
-    },
-  });
-  if (!customer) return null;
+  try {
+    const customer = await prisma.customer.findUnique({
+      where: { id },
+      include: {
+        invoices: { orderBy: { createdAt: "desc" } },
+        quotations: { orderBy: { createdAt: "desc" } },
+        payments: { orderBy: { paymentDate: "desc" }, include: { invoice: { select: { number: true } } } },
+        orders: { orderBy: { createdAt: "desc" } },
+        tasks: { orderBy: { createdAt: "desc" } },
+        notesList: { orderBy: { createdAt: "desc" } },
+      },
+    });
+    if (!customer) return null;
 
-  const activeInvoices = customer.invoices.filter((i) => i.status !== "CANCELLED");
-  const totalBusinessPaise = activeInvoices.reduce((sum, i) => sum + i.totalPaise, 0);
-  const totalPaidPaise = activeInvoices.reduce((sum, i) => sum + i.amountPaidPaise, 0);
-  const outstandingPaise = totalBusinessPaise - totalPaidPaise;
+    const activeInvoices = customer.invoices.filter((i) => i.status !== "CANCELLED");
+    const totalBusinessPaise = activeInvoices.reduce((sum, i) => sum + i.totalPaise, 0);
+    const totalPaidPaise = activeInvoices.reduce((sum, i) => sum + i.amountPaidPaise, 0);
+    const outstandingPaise = totalBusinessPaise - totalPaidPaise;
 
-  const activity = await prisma.activityLog.findMany({
-    where: { customerId: id },
-    orderBy: { createdAt: "desc" },
-    take: 30,
-  });
+    const activity = await prisma.activityLog.findMany({
+      where: { customerId: id },
+      orderBy: { createdAt: "desc" },
+      take: 30,
+    });
 
-  return {
-    customer,
-    financials: {
-      totalBusinessPaise,
-      totalPaidPaise,
-      outstandingPaise,
-      quotationsCount: customer.quotations.length,
-      invoicesCount: customer.invoices.length,
-      ordersCount: customer.orders.length,
-    },
-    activity,
-  };
+    return {
+      customer,
+      financials: {
+        totalBusinessPaise,
+        totalPaidPaise,
+        outstandingPaise,
+        quotationsCount: customer.quotations.length,
+        invoicesCount: customer.invoices.length,
+        ordersCount: customer.orders.length,
+      },
+      activity,
+    };
+  } catch (err) {
+    console.error("Error in getCustomerWithFinancials:", err);
+    return null;
+  }
 }
 
 function toDbFields(data: CustomerFormValues) {
@@ -163,12 +183,17 @@ export async function updateCustomer(id: string, data: CustomerFormValues) {
 }
 
 export async function canDeleteCustomer(id: string) {
-  const [quotations, invoices, payments] = await Promise.all([
-    prisma.quotation.count({ where: { customerId: id } }),
-    prisma.invoice.count({ where: { customerId: id } }),
-    prisma.payment.count({ where: { customerId: id } }),
-  ]);
-  return quotations === 0 && invoices === 0 && payments === 0;
+  try {
+    const [quotations, invoices, payments] = await Promise.all([
+      prisma.quotation.count({ where: { customerId: id } }),
+      prisma.invoice.count({ where: { customerId: id } }),
+      prisma.payment.count({ where: { customerId: id } }),
+    ]);
+    return quotations === 0 && invoices === 0 && payments === 0;
+  } catch (err) {
+    console.error("Error in canDeleteCustomer:", err);
+    return false;
+  }
 }
 
 export async function deleteCustomer(id: string) {

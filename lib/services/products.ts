@@ -13,50 +13,70 @@ export interface ListProductsParams {
 }
 
 export async function listProducts(params: ListProductsParams) {
-  const page = Math.max(1, params.page ?? 1);
-  const where: Prisma.ProductWhereInput = {
-    ...(params.type ? { type: params.type } : {}),
-    ...(params.status ? { status: params.status } : {}),
-    ...(params.q
-      ? {
-          OR: [
-            { name: { contains: params.q } },
-            { sku: { contains: params.q } },
-            { description: { contains: params.q } },
-          ],
-        }
-      : {}),
-  };
+  try {
+    const page = Math.max(1, params.page ?? 1);
+    const where: Prisma.ProductWhereInput = {
+      ...(params.type ? { type: params.type } : {}),
+      ...(params.status ? { status: params.status } : {}),
+      ...(params.q
+        ? {
+            OR: [
+              { name: { contains: params.q } },
+              { sku: { contains: params.q } },
+              { description: { contains: params.q } },
+            ],
+          }
+        : {}),
+    };
 
-  const [products, total] = await Promise.all([
-    prisma.product.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-      include: { category: true },
-    }),
-    prisma.product.count({ where }),
-  ]);
+    const [products, total] = await Promise.all([
+      prisma.product.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * PAGE_SIZE,
+        take: PAGE_SIZE,
+        include: { category: true },
+      }),
+      prisma.product.count({ where }),
+    ]);
 
-  return { products, total, page, pageSize: PAGE_SIZE };
+    return { products, total, page, pageSize: PAGE_SIZE };
+  } catch (err) {
+    console.error("Error in listProducts:", err);
+    return { products: [], total: 0, page: 1, pageSize: PAGE_SIZE };
+  }
 }
 
 export async function listAllActiveProducts() {
-  return prisma.product.findMany({
-    where: { status: "ACTIVE" },
-    orderBy: { name: "asc" },
-    include: { category: true },
-  });
+  try {
+    return await prisma.product.findMany({
+      where: { status: "ACTIVE" },
+      orderBy: { name: "asc" },
+      include: { category: true },
+    });
+  } catch (err) {
+    console.error("Error in listAllActiveProducts:", err);
+    return [];
+  }
 }
 
 export async function listCategoryNames() {
-  const categories = await prisma.productCategory.findMany({ orderBy: { name: "asc" }, select: { name: true } });
-  return categories.map((c) => c.name);
+  try {
+    const categories = await prisma.productCategory.findMany({ orderBy: { name: "asc" }, select: { name: true } });
+    return categories.map((c) => c.name);
+  } catch (err) {
+    console.error("Error in listCategoryNames:", err);
+    return [];
+  }
 }
 
 export async function getProductById(id: string) {
-  return prisma.product.findUnique({ where: { id }, include: { category: true } });
+  try {
+    return await prisma.product.findUnique({ where: { id }, include: { category: true } });
+  } catch (err) {
+    console.error("Error in getProductById:", err);
+    return null;
+  }
 }
 
 async function resolveCategoryId(categoryName: string | undefined): Promise<string | null> {

@@ -15,63 +15,78 @@ export interface ListExpensesParams {
 }
 
 export async function listExpenseCategories() {
-  return prisma.expenseCategory.findMany({
-    orderBy: { name: "asc" },
-  });
+  try {
+    return await prisma.expenseCategory.findMany({
+      orderBy: { name: "asc" },
+    });
+  } catch (err) {
+    console.error("Error in listExpenseCategories:", err);
+    return [];
+  }
 }
 
 export async function listExpenses(params: ListExpensesParams) {
-  const page = Math.max(1, params.page ?? 1);
-  const where: Prisma.ExpenseWhereInput = {
-    ...(params.status ? { status: params.status } : {}),
-    ...(params.categoryId ? { categoryId: params.categoryId } : {}),
-    ...(params.vendorId ? { vendorId: params.vendorId } : {}),
-    ...(params.q
-      ? {
-          OR: [
-            { number: { contains: params.q } },
-            { description: { contains: params.q } },
-            { referenceNumber: { contains: params.q } },
-            { vendor: { businessName: { contains: params.q } } },
-          ],
-        }
-      : {}),
-  };
+  try {
+    const page = Math.max(1, params.page ?? 1);
+    const where: Prisma.ExpenseWhereInput = {
+      ...(params.status ? { status: params.status } : {}),
+      ...(params.categoryId ? { categoryId: params.categoryId } : {}),
+      ...(params.vendorId ? { vendorId: params.vendorId } : {}),
+      ...(params.q
+        ? {
+            OR: [
+              { number: { contains: params.q } },
+              { description: { contains: params.q } },
+              { referenceNumber: { contains: params.q } },
+              { vendor: { businessName: { contains: params.q } } },
+            ],
+          }
+        : {}),
+    };
 
-  const [expenses, total] = await Promise.all([
-    prisma.expense.findMany({
-      where,
-      orderBy: { date: "desc" },
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
+    const [expenses, total] = await Promise.all([
+      prisma.expense.findMany({
+        where,
+        orderBy: { date: "desc" },
+        skip: (page - 1) * PAGE_SIZE,
+        take: PAGE_SIZE,
+        include: {
+          category: { select: { id: true, name: true } },
+          vendor: { select: { id: true, businessName: true } },
+        },
+      }),
+      prisma.expense.count({ where }),
+    ]);
+
+    return { expenses, total, page, pageSize: PAGE_SIZE };
+  } catch (err) {
+    console.error("Error in listExpenses:", err);
+    return { expenses: [], total: 0, page: 1, pageSize: PAGE_SIZE };
+  }
+}
+
+export async function getExpenseDetail(id: string) {
+  try {
+    const expense = await prisma.expense.findUnique({
+      where: { id },
       include: {
         category: { select: { id: true, name: true } },
         vendor: { select: { id: true, businessName: true } },
       },
-    }),
-    prisma.expense.count({ where }),
-  ]);
+    });
+    if (!expense) return null;
 
-  return { expenses, total, page, pageSize: PAGE_SIZE };
-}
+    const activityLogs = await prisma.activityLog.findMany({
+      where: { expenseId: id },
+      orderBy: { createdAt: "desc" },
+      take: 30,
+    });
 
-export async function getExpenseDetail(id: string) {
-  const expense = await prisma.expense.findUnique({
-    where: { id },
-    include: {
-      category: { select: { id: true, name: true } },
-      vendor: { select: { id: true, businessName: true } },
-    },
-  });
-  if (!expense) return null;
-
-  const activityLogs = await prisma.activityLog.findMany({
-    where: { expenseId: id },
-    orderBy: { createdAt: "desc" },
-    take: 30,
-  });
-
-  return { ...expense, activityLogs };
+    return { ...expense, activityLogs };
+  } catch (err) {
+    console.error("Error in getExpenseDetail:", err);
+    return null;
+  }
 }
 
 export function expenseToFormValues(expense: any): ExpenseFormValues {

@@ -16,44 +16,54 @@ export interface ListQuotationsParams {
 }
 
 export async function listQuotations(params: ListQuotationsParams) {
-  const page = Math.max(1, params.page ?? 1);
-  const where: Prisma.QuotationWhereInput = {
-    ...(params.status ? { status: params.status } : {}),
-    ...(params.q
-      ? {
-          OR: [
-            { number: { contains: params.q } },
-            { customer: { name: { contains: params.q } } },
-          ],
-        }
-      : {}),
-  };
+  try {
+    const page = Math.max(1, params.page ?? 1);
+    const where: Prisma.QuotationWhereInput = {
+      ...(params.status ? { status: params.status } : {}),
+      ...(params.q
+        ? {
+            OR: [
+              { number: { contains: params.q } },
+              { customer: { name: { contains: params.q } } },
+            ],
+          }
+        : {}),
+    };
 
-  const [quotations, total] = await Promise.all([
-    prisma.quotation.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-      include: { customer: { select: { id: true, name: true } } },
-    }),
-    prisma.quotation.count({ where }),
-  ]);
+    const [quotations, total] = await Promise.all([
+      prisma.quotation.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * PAGE_SIZE,
+        take: PAGE_SIZE,
+        include: { customer: { select: { id: true, name: true } } },
+      }),
+      prisma.quotation.count({ where }),
+    ]);
 
-  return { quotations, total, page, pageSize: PAGE_SIZE };
+    return { quotations, total, page, pageSize: PAGE_SIZE };
+  } catch (err) {
+    console.error("Error in listQuotations:", err);
+    return { quotations: [], total: 0, page: 1, pageSize: PAGE_SIZE };
+  }
 }
 
 export async function getQuotationDetail(id: string) {
-  const quotation = await prisma.quotation.findUnique({
-    where: { id },
-    include: {
-      customer: true,
-      items: { orderBy: { sortOrder: "asc" } },
-      convertedInvoice: { select: { id: true, number: true, status: true } },
-      activityLogs: { orderBy: { createdAt: "desc" } },
-    },
-  });
-  return quotation;
+  try {
+    const quotation = await prisma.quotation.findUnique({
+      where: { id },
+      include: {
+        customer: true,
+        items: { orderBy: { sortOrder: "asc" } },
+        convertedInvoice: { select: { id: true, number: true, status: true } },
+        activityLogs: { orderBy: { createdAt: "desc" } },
+      },
+    });
+    return quotation;
+  } catch (err) {
+    console.error("Error in getQuotationDetail:", err);
+    return null;
+  }
 }
 
 function itemsToLineInputs(items: DocumentItemValues[]) {

@@ -18,79 +18,89 @@ export interface ListTasksParams {
 }
 
 export async function listTasks(params: ListTasksParams) {
-  const page = Math.max(1, params.page ?? 1);
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  try {
+    const page = Math.max(1, params.page ?? 1);
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
-  let dueDateWhere: Prisma.DateTimeFilter | undefined;
-  if (params.dueDate === "today") {
-    dueDateWhere = { gte: todayStart, lte: todayEnd };
-  } else if (params.dueDate === "overdue") {
-    dueDateWhere = { lt: todayStart };
-  } else if (params.dueDate === "upcoming") {
-    dueDateWhere = { gt: todayEnd };
-  } else if (params.dueDate && params.dueDate.length === 10) {
-    const d = new Date(params.dueDate);
-    const start = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
-    dueDateWhere = { gte: start, lte: end };
+    let dueDateWhere: Prisma.DateTimeFilter | undefined;
+    if (params.dueDate === "today") {
+      dueDateWhere = { gte: todayStart, lte: todayEnd };
+    } else if (params.dueDate === "overdue") {
+      dueDateWhere = { lt: todayStart };
+    } else if (params.dueDate === "upcoming") {
+      dueDateWhere = { gt: todayEnd };
+    } else if (params.dueDate && params.dueDate.length === 10) {
+      const d = new Date(params.dueDate);
+      const start = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      const end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+      dueDateWhere = { gte: start, lte: end };
+    }
+
+    const where: Prisma.TaskWhereInput = {
+      ...(params.status ? { status: params.status } : {}),
+      ...(params.priority ? { priority: params.priority } : {}),
+      ...(dueDateWhere ? { dueDate: dueDateWhere } : {}),
+      ...(params.assignedToId ? { assignedToId: params.assignedToId } : {}),
+      ...(params.customerId ? { customerId: params.customerId } : {}),
+      ...(params.orderId ? { orderId: params.orderId } : {}),
+      ...(params.invoiceId ? { invoiceId: params.invoiceId } : {}),
+      ...(params.q
+        ? {
+            OR: [
+              { title: { contains: params.q } },
+              { description: { contains: params.q } },
+            ],
+          }
+        : {}),
+    };
+
+    const [tasks, total] = await Promise.all([
+      prisma.task.findMany({
+        where,
+        orderBy: [
+          { status: "asc" },
+          { dueDate: "asc" },
+          { priority: "desc" },
+        ],
+        skip: (page - 1) * PAGE_SIZE,
+        take: PAGE_SIZE,
+        include: {
+          assignedTo: { select: { id: true, name: true } },
+          customer: { select: { id: true, name: true } },
+          order: { select: { id: true, number: true } },
+        },
+      }),
+      prisma.task.count({ where }),
+    ]);
+
+    return { tasks, total, page, pageSize: PAGE_SIZE };
+  } catch (err) {
+    console.error("Error in listTasks:", err);
+    return { tasks: [], total: 0, page: 1, pageSize: PAGE_SIZE };
   }
+}
 
-  const where: Prisma.TaskWhereInput = {
-    ...(params.status ? { status: params.status } : {}),
-    ...(params.priority ? { priority: params.priority } : {}),
-    ...(dueDateWhere ? { dueDate: dueDateWhere } : {}),
-    ...(params.assignedToId ? { assignedToId: params.assignedToId } : {}),
-    ...(params.customerId ? { customerId: params.customerId } : {}),
-    ...(params.orderId ? { orderId: params.orderId } : {}),
-    ...(params.invoiceId ? { invoiceId: params.invoiceId } : {}),
-    ...(params.q
-      ? {
-          OR: [
-            { title: { contains: params.q } },
-            { description: { contains: params.q } },
-          ],
-        }
-      : {}),
-  };
-
-  const [tasks, total] = await Promise.all([
-    prisma.task.findMany({
-      where,
-      orderBy: [
-        { status: "asc" },
-        { dueDate: "asc" },
-        { priority: "desc" },
-      ],
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
+export async function getTaskDetail(id: string) {
+  try {
+    const task = await prisma.task.findUnique({
+      where: { id },
       include: {
         assignedTo: { select: { id: true, name: true } },
         customer: { select: { id: true, name: true } },
         order: { select: { id: true, number: true } },
+        quotation: { select: { id: true, number: true } },
+        invoice: { select: { id: true, number: true } },
+        productionJob: { select: { id: true, number: true, itemName: true } },
+        activityLogs: { orderBy: { createdAt: "desc" } },
       },
-    }),
-    prisma.task.count({ where }),
-  ]);
-
-  return { tasks, total, page, pageSize: PAGE_SIZE };
-}
-
-export async function getTaskDetail(id: string) {
-  const task = await prisma.task.findUnique({
-    where: { id },
-    include: {
-      assignedTo: { select: { id: true, name: true } },
-      customer: { select: { id: true, name: true } },
-      order: { select: { id: true, number: true } },
-      quotation: { select: { id: true, number: true } },
-      invoice: { select: { id: true, number: true } },
-      productionJob: { select: { id: true, number: true, itemName: true } },
-      activityLogs: { orderBy: { createdAt: "desc" } },
-    },
-  });
-  return task;
+    });
+    return task;
+  } catch (err) {
+    console.error("Error in getTaskDetail:", err);
+    return null;
+  }
 }
 
 export function taskToFormValues(task: any): TaskFormValues {

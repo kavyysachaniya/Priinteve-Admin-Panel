@@ -37,52 +37,62 @@ export interface ListInvoicesParams {
 }
 
 export async function listInvoices(params: ListInvoicesParams) {
-  const page = Math.max(1, params.page ?? 1);
-  const where: Prisma.InvoiceWhereInput = {
-    ...(params.q
-      ? {
-          OR: [
-            { number: { contains: params.q } },
-            { customer: { name: { contains: params.q } } },
-          ],
-        }
-      : {}),
-  };
+  try {
+    const page = Math.max(1, params.page ?? 1);
+    const where: Prisma.InvoiceWhereInput = {
+      ...(params.q
+        ? {
+            OR: [
+              { number: { contains: params.q } },
+              { customer: { name: { contains: params.q } } },
+            ],
+          }
+        : {}),
+    };
 
-  const [invoicesRaw, total] = await Promise.all([
-    prisma.invoice.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      include: { customer: { select: { id: true, name: true } } },
-    }),
-    prisma.invoice.count({ where }),
-  ]);
+    const [invoicesRaw, total] = await Promise.all([
+      prisma.invoice.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        include: { customer: { select: { id: true, name: true } } },
+      }),
+      prisma.invoice.count({ where }),
+    ]);
 
-  let invoices = invoicesRaw.map((inv) => ({ ...inv, effectiveStatus: deriveInvoiceStatus(inv) }));
+    let invoices = invoicesRaw.map((inv) => ({ ...inv, effectiveStatus: deriveInvoiceStatus(inv) }));
 
-  if (params.status) {
-    invoices = invoices.filter((inv) => inv.effectiveStatus === params.status);
+    if (params.status) {
+      invoices = invoices.filter((inv) => inv.effectiveStatus === params.status);
+    }
+
+    const filteredTotal = params.status ? invoices.length : total;
+    const paged = invoices.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+    return { invoices: paged, total: filteredTotal, page, pageSize: PAGE_SIZE };
+  } catch (err) {
+    console.error("Error in listInvoices:", err);
+    return { invoices: [], total: 0, page: 1, pageSize: PAGE_SIZE };
   }
-
-  const filteredTotal = params.status ? invoices.length : total;
-  const paged = invoices.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  return { invoices: paged, total: filteredTotal, page, pageSize: PAGE_SIZE };
 }
 
 export async function getInvoiceDetail(id: string) {
-  const invoice = await prisma.invoice.findUnique({
-    where: { id },
-    include: {
-      customer: true,
-      items: { orderBy: { sortOrder: "asc" } },
-      payments: { orderBy: { paymentDate: "desc" } },
-      sourceQuotation: { select: { id: true, number: true } },
-      activityLogs: { orderBy: { createdAt: "desc" } },
-    },
-  });
-  if (!invoice) return null;
-  return { ...invoice, effectiveStatus: deriveInvoiceStatus(invoice) };
+  try {
+    const invoice = await prisma.invoice.findUnique({
+      where: { id },
+      include: {
+        customer: true,
+        items: { orderBy: { sortOrder: "asc" } },
+        payments: { orderBy: { paymentDate: "desc" } },
+        sourceQuotation: { select: { id: true, number: true } },
+        activityLogs: { orderBy: { createdAt: "desc" } },
+      },
+    });
+    if (!invoice) return null;
+    return { ...invoice, effectiveStatus: deriveInvoiceStatus(invoice) };
+  } catch (err) {
+    console.error("Error in getInvoiceDetail:", err);
+    return null;
+  }
 }
 
 function itemsToLineInputs(items: DocumentItemValues[]) {

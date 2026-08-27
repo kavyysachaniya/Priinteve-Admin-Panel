@@ -12,51 +12,61 @@ export interface ListPaymentsParams {
 }
 
 export async function listPayments(params: ListPaymentsParams) {
-  const page = Math.max(1, params.page ?? 1);
-  const where: Prisma.PaymentWhereInput = params.q
-    ? {
-        OR: [
-          { referenceNumber: { contains: params.q } },
-          { customer: { name: { contains: params.q } } },
-          { invoice: { number: { contains: params.q } } },
-        ],
-      }
-    : {};
+  try {
+    const page = Math.max(1, params.page ?? 1);
+    const where: Prisma.PaymentWhereInput = params.q
+      ? {
+          OR: [
+            { referenceNumber: { contains: params.q } },
+            { customer: { name: { contains: params.q } } },
+            { invoice: { number: { contains: params.q } } },
+          ],
+        }
+      : {};
 
-  const [payments, total] = await Promise.all([
-    prisma.payment.findMany({
-      where,
-      orderBy: { paymentDate: "desc" },
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-      include: {
-        customer: { select: { id: true, name: true } },
-        invoice: { select: { id: true, number: true } },
-      },
-    }),
-    prisma.payment.count({ where }),
-  ]);
+    const [payments, total] = await Promise.all([
+      prisma.payment.findMany({
+        where,
+        orderBy: { paymentDate: "desc" },
+        skip: (page - 1) * PAGE_SIZE,
+        take: PAGE_SIZE,
+        include: {
+          customer: { select: { id: true, name: true } },
+          invoice: { select: { id: true, number: true } },
+        },
+      }),
+      prisma.payment.count({ where }),
+    ]);
 
-  return { payments, total, page, pageSize: PAGE_SIZE };
+    return { payments, total, page, pageSize: PAGE_SIZE };
+  } catch (err) {
+    console.error("Error in listPayments:", err);
+    return { payments: [], total: 0, page: 1, pageSize: PAGE_SIZE };
+  }
 }
 
 /** Invoices with an outstanding balance, for the Record Payment picker. */
 export async function listPayableInvoices() {
-  const invoices = await prisma.invoice.findMany({
-    where: { status: { notIn: ["CANCELLED"] } },
-    orderBy: { invoiceDate: "desc" },
-    select: {
-      id: true,
-      number: true,
-      customerId: true,
-      totalPaise: true,
-      amountPaidPaise: true,
-      dueDate: true,
-    },
-  });
-  return invoices
-    .map((inv) => ({ ...inv, outstandingPaise: inv.totalPaise - inv.amountPaidPaise }))
-    .filter((inv) => inv.outstandingPaise > 0);
+  try {
+    const invoices = await prisma.invoice.findMany({
+      where: { status: { notIn: ["CANCELLED"] } },
+      orderBy: { invoiceDate: "desc" },
+      select: {
+        id: true,
+        number: true,
+        customerId: true,
+        totalPaise: true,
+        amountPaidPaise: true,
+        dueDate: true,
+      },
+    });
+    return invoices
+      .map((inv) => ({ ...inv, outstandingPaise: inv.totalPaise - inv.amountPaidPaise }))
+      .filter((inv) => inv.outstandingPaise > 0);
+  } catch (err) {
+    console.error("Error in listPayableInvoices:", err);
+    return [];
+  }
 }
 
 export async function createPayment(data: PaymentFormValues) {
