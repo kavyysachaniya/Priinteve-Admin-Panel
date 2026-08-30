@@ -63,7 +63,7 @@ export function Topbar() {
   });
 
   return (
-    <header className="sticky top-0 z-30 flex h-11 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-6">
+    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-6">
       <Button
         variant="ghost"
         size="icon"
@@ -76,7 +76,7 @@ export function Topbar() {
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent side="left" className="w-[260px] bg-sidebar p-0 text-sidebar-foreground [&_svg]:shrink-0">
-          <SheetHeader className="h-11 flex-row items-center border-b border-sidebar-border px-4">
+          <SheetHeader className="h-14 flex-row items-center border-b border-sidebar-border px-4">
             <SheetTitle asChild>
               <LogoMark />
             </SheetTitle>
@@ -92,7 +92,7 @@ export function Topbar() {
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search customers, quotations, invoices…"
-            className="h-8 bg-muted/50 pl-8 text-xs"
+            className="h-9 bg-muted/50 pl-8"
             onFocus={(e) => e.currentTarget.blur()}
             readOnly
             onClick={() => toast.info("Global search is coming soon")}

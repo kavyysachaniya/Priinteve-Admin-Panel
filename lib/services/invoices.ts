@@ -3,6 +3,7 @@ import { computeDocumentTotals, computeLineItem, rupeesToPaise, paiseToRupees } 
 import { issueDocumentNumber } from "@/lib/services/numbering";
 import { logActivity } from "@/lib/services/activity";
 import { getCompanySettings } from "@/lib/services/settings";
+import { postInvoiceJournal, reverseInvoiceJournal } from "@/lib/services/accounting/auto-accounting";
 import type { InvoiceFormValues } from "@/lib/validations/invoice";
 import type { DocumentItemValues } from "@/lib/validations/document-item";
 import type { Invoice, InvoiceStatus, Prisma } from "@prisma/client";
@@ -222,25 +223,35 @@ export async function updateInvoice(id: string, data: InvoiceFormValues) {
   }, TX_OPTIONS);
 }
 
-export async function markInvoiceSent(id: string) {
+export async function markInvoiceSent(id: string, userId?: string) {
   const invoice = await prisma.invoice.findUnique({ where: { id } });
   if (!invoice) throw new Error("Invoice not found");
   if (invoice.status !== "DRAFT") {
     throw new Error("Only draft invoices can be marked as sent");
   }
-  const updated = await prisma.invoice.update({ where: { id }, data: { status: "SENT" } });
-  await logActivity({
-    type: "invoice.status_changed",
-    message: `Invoice ${updated.number} marked as Sent`,
-    entityType: "invoice",
-    entityId: updated.id,
-    customerId: updated.customerId,
-    invoiceId: updated.id,
-  });
-  return updated;
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.invoice.update({ where: { id }, data: { status: "SENT" } });
+
+    // Auto-accounting: post invoice journal entry (Debit AR, Credit Revenue + GST)
+    await postInvoiceJournal(updated, userId, tx);
+
+    await logActivity(
+      {
+        type: "invoice.status_changed",
+        message: `Invoice ${updated.number} marked as Sent`,
+        entityType: "invoice",
+        entityId: updated.id,
+        customerId: updated.customerId,
+        invoiceId: updated.id,
+      },
+      tx
+    );
+    return updated;
+  }, TX_OPTIONS);
 }
 
-export async function cancelInvoice(id: string) {
+export async function cancelInvoice(id: string, userId?: string) {
   const invoice = await prisma.invoice.findUnique({ where: { id } });
   if (!invoice) throw new Error("Invoice not found");
   if (invoice.amountPaidPaise > 0) {
@@ -249,16 +260,26 @@ export async function cancelInvoice(id: string) {
   if (invoice.status === "CANCELLED") {
     throw new Error("This invoice is already cancelled");
   }
-  const updated = await prisma.invoice.update({ where: { id }, data: { status: "CANCELLED" } });
-  await logActivity({
-    type: "invoice.cancelled",
-    message: `Invoice ${updated.number} cancelled`,
-    entityType: "invoice",
-    entityId: updated.id,
-    customerId: updated.customerId,
-    invoiceId: updated.id,
-  });
-  return updated;
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.invoice.update({ where: { id }, data: { status: "CANCELLED" } });
+
+    // Auto-accounting: reverse the invoice journal entry
+    await reverseInvoiceJournal(id, `Invoice ${invoice.number} cancelled`, userId, tx);
+
+    await logActivity(
+      {
+        type: "invoice.cancelled",
+        message: `Invoice ${updated.number} cancelled`,
+        entityType: "invoice",
+        entityId: updated.id,
+        customerId: updated.customerId,
+        invoiceId: updated.id,
+      },
+      tx
+    );
+    return updated;
+  }, TX_OPTIONS);
 }
 
 export function invoiceToFormValues(

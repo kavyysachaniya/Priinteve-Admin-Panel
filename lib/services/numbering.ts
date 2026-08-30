@@ -3,7 +3,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 
 type TxClient = Omit<PrismaClient, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 
-export type SequenceKey = "quotation" | "invoice" | "order" | "production" | "delivery" | "expense";
+export type SequenceKey = "quotation" | "invoice" | "order" | "production" | "delivery" | "expense" | "journal";
 
 const DEFAULTS: Record<SequenceKey, { prefix: string }> = {
   quotation: { prefix: "QTN" },
@@ -12,6 +12,7 @@ const DEFAULTS: Record<SequenceKey, { prefix: string }> = {
   production: { prefix: "PROD" },
   delivery: { prefix: "DEL" },
   expense: { prefix: "EXP" },
+  journal: { prefix: "JE" },
 };
 
 function pad(n: number, width: number) {

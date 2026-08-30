@@ -9,13 +9,13 @@ import { requirePermission } from "@/lib/auth/session";
 export type { FormActionResult };
 
 export async function createPaymentAction(values: PaymentFormValues): Promise<FormActionResult> {
-  await requirePermission("payments:record");
+  const user = await requirePermission("payments:record");
   const parsed = paymentFormSchema.safeParse(values);
   if (!parsed.success) {
     return { success: false, message: "Please fix the highlighted fields.", fieldErrors: flattenZodError(parsed.error) };
   }
   try {
-    const payment = await paymentService.createPayment(parsed.data);
+    const payment = await paymentService.createPayment(parsed.data, user.id);
     revalidatePath("/payments");
     revalidatePath("/invoices");
     revalidatePath(`/invoices/${parsed.data.invoiceId}`);

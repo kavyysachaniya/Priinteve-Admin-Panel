@@ -10,6 +10,8 @@ export const paymentFormSchema = z.object({
   method: z.enum(["CASH", "UPI", "BANK_TRANSFER", "CARD", "OTHER"]),
   referenceNumber: z.string().trim().max(100).optional().or(z.literal("")),
   notes: z.string().trim().max(1000).optional().or(z.literal("")),
+  // Phase 4: which cash/bank account this payment goes into
+  paymentAccountId: z.string().optional().or(z.literal("")),
 });
 
 export type PaymentFormValues = z.infer<typeof paymentFormSchema>;
@@ -23,6 +25,7 @@ export function paymentFormDefaults(overrides?: Partial<PaymentFormValues>): Pay
     method: "UPI",
     referenceNumber: "",
     notes: "",
+    paymentAccountId: "",
     ...overrides,
   };
 }

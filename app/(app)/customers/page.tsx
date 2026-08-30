@@ -86,79 +86,81 @@ export default async function CustomersPage({
             }
           />
         ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead className="text-right">Total Business</TableHead>
-                  <TableHead className="text-right">Outstanding</TableHead>
-                  <TableHead>Last Transaction</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="w-10" />
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Customer</TableHead>
+                <TableHead className="hidden md:table-cell">Phone</TableHead>
+                <TableHead className="hidden xl:table-cell">Email</TableHead>
+                <TableHead className="text-right">Total Business</TableHead>
+                <TableHead className="text-right">Outstanding</TableHead>
+                <TableHead className="hidden lg:table-cell">Last Transaction</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="w-10" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {customers.map((customer) => (
+                <TableRow key={customer.id}>
+                  <TableCell className="max-w-[220px]">
+                    <Link href={`/customers/${customer.id}`} className="flex items-center gap-2.5 py-1">
+                      <Avatar className="size-8 shrink-0">
+                        <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
+                          {initials(customer.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium" title={customer.name}>
+                          {customer.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {customer.type === "BUSINESS" ? "Business" : "Individual"}
+                        </p>
+                      </div>
+                    </Link>
+                  </TableCell>
+                  <TableCell className="hidden text-sm md:table-cell">{customer.phone}</TableCell>
+                  <TableCell className="hidden max-w-[200px] truncate text-sm text-muted-foreground xl:table-cell" title={customer.email || undefined}>
+                    {customer.email || "—"}
+                  </TableCell>
+                  <TableCell className="text-right text-sm font-medium">
+                    {formatCurrency(customer.totalBusinessPaise)}
+                  </TableCell>
+                  <TableCell className="text-right text-sm">
+                    {customer.outstandingPaise > 0 ? (
+                      <span className="font-medium text-destructive">
+                        {formatCurrency(customer.outstandingPaise)}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">₹0.00</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">
+                    {formatDate(customer.lastTransactionAt)}
+                  </TableCell>
+                  <TableCell>
+                    <CustomerStatusBadge status={customer.status} />
+                  </TableCell>
+                  <TableCell>
+                    <RowActions>
+                      <DropdownMenuItem asChild>
+                        <Link href={`/customers/${customer.id}`}>
+                          <Eye className="size-4" /> View
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href={`/customers/${customer.id}/edit`}>
+                          <Pencil className="size-4" /> Edit
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DeleteCustomerItem customerId={customer.id} customerName={customer.name} />
+                    </RowActions>
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {customers.map((customer) => (
-                  <TableRow key={customer.id}>
-                    <TableCell>
-                      <Link href={`/customers/${customer.id}`} className="flex items-center gap-2.5 py-1">
-                        <Avatar className="size-8">
-                          <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
-                            {initials(customer.name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium">{customer.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {customer.type === "BUSINESS" ? "Business" : "Individual"}
-                          </p>
-                        </div>
-                      </Link>
-                    </TableCell>
-                    <TableCell className="text-sm">{customer.phone}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{customer.email || "—"}</TableCell>
-                    <TableCell className="text-right text-sm font-medium">
-                      {formatCurrency(customer.totalBusinessPaise)}
-                    </TableCell>
-                    <TableCell className="text-right text-sm">
-                      {customer.outstandingPaise > 0 ? (
-                        <span className="font-medium text-destructive">
-                          {formatCurrency(customer.outstandingPaise)}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">₹0.00</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {formatDate(customer.lastTransactionAt)}
-                    </TableCell>
-                    <TableCell>
-                      <CustomerStatusBadge status={customer.status} />
-                    </TableCell>
-                    <TableCell>
-                      <RowActions>
-                        <DropdownMenuItem asChild>
-                          <Link href={`/customers/${customer.id}`}>
-                            <Eye className="size-4" /> View
-                          </Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem asChild>
-                          <Link href={`/customers/${customer.id}/edit`}>
-                            <Pencil className="size-4" /> Edit
-                          </Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DeleteCustomerItem customerId={customer.id} customerName={customer.name} />
-                      </RowActions>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+              ))}
+            </TableBody>
+          </Table>
         )}
 
         <TablePagination page={page} pageSize={pageSize} total={total} />

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { generateExpenseNumber } from "@/lib/services/numbering";
 import { logActivity } from "@/lib/services/activity";
+import { postExpenseJournal, reverseExpenseJournal } from "@/lib/services/accounting/auto-accounting";
 import type { ExpenseFormValues } from "@/lib/validations/expense";
 import type { Prisma, ExpenseStatus } from "@prisma/client";
 
@@ -106,7 +107,7 @@ export function expenseToFormValues(expense: any): ExpenseFormValues {
   };
 }
 
-export async function createExpense(data: ExpenseFormValues) {
+export async function createExpense(data: ExpenseFormValues, userId?: string) {
   const number = await generateExpenseNumber();
 
   const expense = await prisma.expense.create({
@@ -125,7 +126,19 @@ export async function createExpense(data: ExpenseFormValues) {
       status: data.status,
       notes: data.notes || null,
     },
+    include: { category: { select: { name: true } } },
   });
+
+  // Auto-accounting: Debit Expense + Input GST, Credit Cash/Bank
+  if (expense.status === "RECORDED") {
+    try {
+      await prisma.$transaction(async (tx) => {
+        await postExpenseJournal(expense, expense.category.name, userId, tx);
+      });
+    } catch (err) {
+      console.warn("Auto-accounting for expense failed (non-fatal):", err);
+    }
+  }
 
   await logActivity({
     type: "expense.created",
@@ -170,7 +183,12 @@ export async function updateExpense(id: string, data: ExpenseFormValues) {
   return expense;
 }
 
-export async function deleteExpense(id: string) {
+export async function deleteExpense(id: string, userId?: string) {
+  // Reverse accounting entry before deletion
+  await prisma.$transaction(async (tx) => {
+    await reverseExpenseJournal(id, `Expense deleted`, userId, tx);
+  }).catch((err) => console.warn("Expense journal reversal failed (non-fatal):", err));
+
   return prisma.expense.delete({ where: { id } });
 }
 

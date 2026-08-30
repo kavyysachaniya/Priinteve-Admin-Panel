@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import type { ZodError } from "zod";
 
 export type FormActionResult =
-  | { success: true; id?: string }
+  | { success: true; id?: string; message?: string }
   | { success: false; message: string; fieldErrors?: Record<string, string> };
 
 export function flattenZodError(error: ZodError): Record<string, string> {

@@ -1,4 +1,4 @@
-// Priinteve Business OS — Phase 1 & 2 data model
+// Priinteve Business OS — Phase 1, 2, 3 & 4 data model
 // Money is stored as integer paise (smallest currency unit) everywhere to avoid
 // floating point rounding errors in financial calculations. See lib/money.ts.
 
@@ -161,6 +161,7 @@ model User {
   assignedOrders         Order[]                @relation("AssignedOrders")
   assignedProductionJobs ProductionJob[]        @relation("AssignedProductionJobs")
   productionHistories    ProductionJobHistory[] @relation("ProductionHistories")
+  journalEntries         JournalEntry[]         @relation("JECreatedBy")
 }
 
 model Customer {
@@ -449,6 +450,7 @@ model Invoice {
   payments     Payment[]
   tasks        Task[]
   activityLogs ActivityLog[]
+  journalEntries JournalEntry[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -488,10 +490,16 @@ model Payment {
   notes           String?
   createdAt       DateTime      @default(now())
 
-  activityLogs ActivityLog[]
+  // Phase 4: Account into which this payment was deposited
+  paymentAccountId String?
+  paymentAccount   Account? @relation("PaymentAccount", fields: [paymentAccountId], references: [id])
+
+  activityLogs   ActivityLog[]
+  journalEntries JournalEntry[]
 
   @@index([customerId])
   @@index([invoiceId])
+  @@index([paymentAccountId])
 }
 
 model Task {
@@ -633,13 +641,21 @@ model Expense {
   gstAmountPaise   Int             @default(0)
   totalAmountPaise Int
   paymentMethod    PaymentMethod   @default(CASH)
+
+  // Phase 4: proper FK to the Account that paid this expense
+  paymentAccountId String?
+  paymentAccountFK Account? @relation("ExpensePaymentAccount", fields: [paymentAccountId], references: [id])
+
+  // Legacy text field kept for backward compat
   paymentAccount   String?
+
   referenceNumber  String?
   receiptUrl       String?
   notes            String?
   status           ExpenseStatus   @default(RECORDED)
 
-  activityLogs ActivityLog[]
+  activityLogs   ActivityLog[]
+  journalEntries JournalEntry[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -648,6 +664,7 @@ model Expense {
   @@index([status])
   @@index([vendorId])
   @@index([categoryId])
+  @@index([paymentAccountId])
 }
 
 model Attachment {
@@ -747,9 +764,137 @@ model CompanySettings {
 
 model NumberingSequence {
   id         String @id @default(cuid())
-  key        String @unique // "quotation" | "invoice" | "order" | "production" | "delivery" | "expense"
+  key        String @unique // "quotation" | "invoice" | "order" | "production" | "delivery" | "expense" | "journal"
   prefix     String
   year       Int
   nextNumber Int    @default(1)
   padding    Int    @default(4)
 }
+
+// ---------------------------------------------------------------------------
+// Phase 4 — Finance & Accounting System
+// ---------------------------------------------------------------------------
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  INCOME
+  EXPENSE
+}
+
+enum JournalEntryStatus {
+  DRAFT
+  POSTED
+  VOID
+}
+
+enum AccountingPeriodStatus {
+  OPEN
+  CLOSED
+}
+
+// Chart of Accounts
+model Account {
+  id          String      @id @default(cuid())
+  code        String      @unique // e.g. "1010", "4010"
+  name        String
+  type        AccountType
+  description String?
+  isSystem    Boolean     @default(false) // system accounts cannot be deleted
+  isActive    Boolean     @default(true)
+
+  // Opening balance (set once when account is created)
+  openingBalancePaise Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  debitLines  JournalEntryLine[] @relation("DebitAccount")
+  creditLines JournalEntryLine[] @relation("CreditAccount")
+
+  // Payments deposited to this account
+  payments Payment[] @relation("PaymentAccount")
+
+  // Expenses paid from this account
+  expensesPayment Expense[] @relation("ExpensePaymentAccount")
+
+  @@index([type])
+  @@index([isActive])
+}
+
+// Accounting Periods
+model AccountingPeriod {
+  id        String                 @id @default(cuid())
+  name      String // e.g. "FY 2026-27"
+  startDate DateTime
+  endDate   DateTime
+  status    AccountingPeriodStatus @default(OPEN)
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
+
+  @@index([status])
+  @@index([startDate])
+}
+
+// Journal Entries (double-entry accounting)
+model JournalEntry {
+  id          String             @id @default(cuid())
+  number      String             @unique // e.g. "JE-2026-0001"
+  date        DateTime
+  description String
+  reference   String? // e.g. "INV-2026-0001"
+  status      JournalEntryStatus @default(DRAFT)
+
+  // Source document linkage (auto-accounting)
+  sourceType String? // "invoice" | "payment" | "expense" | "manual"
+  invoiceId  String?
+  invoice    Invoice? @relation(fields: [invoiceId], references: [id])
+  paymentId  String?
+  payment    Payment? @relation(fields: [paymentId], references: [id])
+  expenseId  String?
+  expense    Expense? @relation(fields: [expenseId], references: [id])
+
+  // Reversal linkage
+  reversedById    String?       @unique
+  reversedBy      JournalEntry? @relation("JEReversalLink", fields: [reversedById], references: [id])
+  reversalFor     JournalEntry? @relation("JEReversalLink")
+
+  createdById String?
+  createdBy   User?   @relation("JECreatedBy", fields: [createdById], references: [id])
+
+  lines JournalEntryLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+  @@index([status])
+  @@index([invoiceId])
+  @@index([paymentId])
+  @@index([expenseId])
+}
+
+// Individual debit/credit lines within a Journal Entry
+model JournalEntryLine {
+  id             String       @id @default(cuid())
+  journalEntryId String
+  journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+
+  debitAccountId  String?
+  debitAccount    Account? @relation("DebitAccount", fields: [debitAccountId], references: [id])
+  creditAccountId String?
+  creditAccount   Account? @relation("CreditAccount", fields: [creditAccountId], references: [id])
+
+  // Exactly one of debitPaise or creditPaise must be > 0
+  debitPaise  Int @default(0)
+  creditPaise Int @default(0)
+
+  description String?
+  sortOrder   Int     @default(0)
+
+  @@index([journalEntryId])
+  @@index([debitAccountId])
+  @@index([creditAccountId])
+}
+

@@ -74,6 +74,14 @@ export const PERMISSIONS = {
   "settings:edit": "Edit settings",
   // Users
   "users:manage": "Manage users",
+  // Accounting & Reports
+  "accounting:view": "View accounting overview and balances",
+  "accounting:manage": "Manage chart of accounts and periods",
+  "journal:view": "View journal entries and ledger",
+  "journal:create": "Create manual journal entries and reversals",
+  "tax:view": "View GST and tax reports",
+  "reports:view": "View Profit & Loss, Balance Sheet, Cash Flow",
+  "statements:view": "View customer and vendor statements",
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;

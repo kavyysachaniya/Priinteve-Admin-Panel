@@ -16,10 +16,10 @@ export function Sidebar({
     <aside
       className={cn(
         "hidden lg:flex lg:flex-col shrink-0 border-r border-sidebar-border bg-sidebar transition-[width] duration-200 ease-in-out",
-        collapsed ? "lg:w-[68px]" : "lg:w-[200px]"
+        collapsed ? "lg:w-[68px]" : "lg:w-[240px]"
       )}
     >
-      <div className={cn("flex h-11 items-center border-b border-sidebar-border px-4", collapsed && "px-0 justify-center")}>
+      <div className={cn("flex h-14 items-center border-b border-sidebar-border px-4", collapsed && "px-0 justify-center")}>
         <LogoMark collapsed={collapsed} />
       </div>
 

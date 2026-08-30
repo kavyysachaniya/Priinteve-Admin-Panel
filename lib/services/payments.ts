@@ -1,6 +1,7 @@
 import { prisma, TX_OPTIONS } from "@/lib/prisma";
 import { rupeesToPaise } from "@/lib/money";
 import { logActivity } from "@/lib/services/activity";
+import { postPaymentJournal, reversePaymentJournal } from "@/lib/services/accounting/auto-accounting";
 import type { PaymentFormValues } from "@/lib/validations/payment";
 import type { Prisma } from "@prisma/client";
 
@@ -69,7 +70,7 @@ export async function listPayableInvoices() {
   }
 }
 
-export async function createPayment(data: PaymentFormValues) {
+export async function createPayment(data: PaymentFormValues, userId?: string) {
   const amountPaise = rupeesToPaise(data.amount);
 
   return prisma.$transaction(async (tx) => {
@@ -94,6 +95,7 @@ export async function createPayment(data: PaymentFormValues) {
         method: data.method,
         referenceNumber: data.referenceNumber || null,
         notes: data.notes || null,
+        paymentAccountId: data.paymentAccountId || null,
       },
     });
 
@@ -104,6 +106,9 @@ export async function createPayment(data: PaymentFormValues) {
       where: { id: invoice.id },
       data: { amountPaidPaise: newAmountPaid, status: newStatus },
     });
+
+    // Auto-accounting: Debit Cash/Bank, Credit Accounts Receivable
+    await postPaymentJournal(payment, invoice.number, userId, tx);
 
     await logActivity(
       {
@@ -143,10 +148,13 @@ export async function getPaymentDetail(id: string) {
   });
 }
 
-export async function deletePayment(id: string) {
+export async function deletePayment(id: string, userId?: string) {
   return prisma.$transaction(async (tx) => {
     const payment = await tx.payment.findUnique({ where: { id }, include: { invoice: true } });
     if (!payment) throw new Error("Payment not found");
+
+    // Auto-accounting: reverse the payment journal entry BEFORE deleting
+    await reversePaymentJournal(id, `Payment reversal for invoice ${payment.invoice.number}`, userId, tx);
 
     const newAmountPaid = Math.max(0, payment.invoice.amountPaidPaise - payment.amountPaise);
     const newStatus =

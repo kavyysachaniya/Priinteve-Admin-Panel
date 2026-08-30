@@ -41,11 +41,12 @@ export async function updateInvoiceAction(id: string, values: InvoiceFormValues)
 }
 
 export async function markInvoiceSentAction(id: string) {
-  await requirePermission("invoices:edit");
+  const user = await requirePermission("invoices:edit");
   try {
-    await invoiceService.markInvoiceSent(id);
+    await invoiceService.markInvoiceSent(id, user.id);
     revalidatePath("/invoices");
     revalidatePath(`/invoices/${id}`);
+    revalidatePath("/finance");
     return { success: true as const, message: "Invoice marked as sent" };
   } catch (err) {
     return { success: false as const, message: friendlyError(err) };
@@ -53,12 +54,13 @@ export async function markInvoiceSentAction(id: string) {
 }
 
 export async function cancelInvoiceAction(id: string) {
-  await requirePermission("invoices:edit");
+  const user = await requirePermission("invoices:edit");
   try {
-    await invoiceService.cancelInvoice(id);
+    await invoiceService.cancelInvoice(id, user.id);
     revalidatePath("/invoices");
     revalidatePath(`/invoices/${id}`);
     revalidatePath("/dashboard");
+    revalidatePath("/finance");
     return { success: true as const, message: "Invoice cancelled" };
   } catch (err) {
     return { success: false as const, message: friendlyError(err) };
