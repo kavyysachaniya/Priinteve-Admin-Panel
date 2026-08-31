@@ -39,11 +39,11 @@ export function SidebarNav({
   }).filter((section) => section.items.length > 0);
 
   return (
-    <nav className="flex flex-1 flex-col gap-4 overflow-y-auto no-scrollbar px-3 py-3">
+    <nav className="flex flex-1 flex-col gap-3.5 overflow-y-auto no-scrollbar px-3 py-3">
       {filteredSections.map((section, i) => (
         <div key={section.label ?? `section-${i}`} className="flex flex-col gap-0.5">
           {section.label && !collapsed ? (
-            <p className="px-2.5 pt-2 pb-1 text-[10.5px] font-bold uppercase tracking-wider text-sidebar-foreground/50 select-none">
+            <p className="px-2.5 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-sidebar-foreground/60 select-none">
               {section.label}
             </p>
           ) : null}
@@ -60,7 +60,7 @@ export function SidebarNav({
                   "group relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-all duration-150 ease-in-out",
                   collapsed && "justify-center px-0 py-2",
                   active
-                    ? "bg-sidebar-primary/10 text-sidebar-primary dark:bg-sidebar-primary/20 dark:text-sidebar-accent-foreground font-semibold shadow-xs"
+                    ? "bg-sidebar-primary/12 text-sidebar-primary dark:bg-white/10 dark:text-white font-semibold shadow-xs"
                     : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 )}
               >
@@ -68,8 +68,8 @@ export function SidebarNav({
                   className={cn(
                     "size-[18px] shrink-0 transition-colors",
                     active
-                      ? "text-sidebar-primary dark:text-sidebar-accent-foreground"
-                      : "text-sidebar-foreground/60 group-hover:text-sidebar-accent-foreground"
+                      ? "text-sidebar-primary dark:text-white"
+                      : "text-sidebar-foreground/70 group-hover:text-sidebar-accent-foreground"
                   )}
                   strokeWidth={1.75}
                   aria-hidden="true"
