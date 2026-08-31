@@ -24,3 +24,4 @@ export function CancelInvoiceItem({ id, status }: { id: string; status: InvoiceS
     />
   );
 }
+
