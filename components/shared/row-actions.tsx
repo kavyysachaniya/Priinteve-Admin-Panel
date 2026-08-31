@@ -2,35 +2,13 @@
 
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
-import { MoreHorizontal } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-
-export function RowActions({ children }: { children: React.ReactNode }) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="size-8" onClick={(e) => e.stopPropagation()}>
-          <MoreHorizontal className="size-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-        {children}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
 
 /**
- * A single always-visible icon action for a table row (e.g. View, Edit) — used
- * so the two most common actions don't require opening the overflow menu.
- * Lower-frequency and destructive actions stay inside `RowActions`.
+ * A single always-visible icon action for a table row (e.g. View, Edit).
  */
 export function QuickAction({
   icon: Icon,
@@ -49,7 +27,10 @@ export function QuickAction({
     <Button
       variant="ghost"
       size="icon"
-      className={cn("size-8", destructive && "text-destructive hover:text-destructive")}
+      className={cn(
+        "size-7 text-muted-foreground hover:text-foreground transition-colors",
+        destructive && "text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+      )}
       asChild={!!href}
       onClick={(e) => {
         e.stopPropagation();
@@ -58,10 +39,10 @@ export function QuickAction({
     >
       {href ? (
         <Link href={href} aria-label={label}>
-          <Icon className="size-4" />
+          <Icon className="size-3.5" />
         </Link>
       ) : (
-        <Icon className="size-4" />
+        <Icon className="size-3.5" />
       )}
     </Button>
   );
@@ -74,7 +55,41 @@ export function QuickAction({
   );
 }
 
-/** Container for a row's action cell: quick icon actions + the overflow menu. */
+/**
+ * Delete action trigger button with Trash2 Lucide icon.
+ */
+export function DeleteRowButton({
+  label = "Delete",
+  onClick,
+  disabled,
+}: {
+  label?: string;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          disabled={disabled}
+          className="size-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClick?.();
+          }}
+          aria-label={label}
+        >
+          <Trash2 className="size-3.5" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Container for a row's action cell: View, Edit, and Delete icon buttons. */
 export function RowActionsBar({ children }: { children: React.ReactNode }) {
-  return <div className="flex items-center justify-end gap-0.5">{children}</div>;
+  return <div className="flex items-center justify-end gap-1">{children}</div>;
 }

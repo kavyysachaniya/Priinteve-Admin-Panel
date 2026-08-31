@@ -7,8 +7,8 @@ import { TableToolbar } from "@/components/shared/table-toolbar";
 import { TableFilterSelect } from "@/components/shared/table-filter-select";
 import { TablePagination } from "@/components/shared/table-pagination";
 import { InvoiceStatusBadge } from "@/components/shared/status-badge";
-import { QuickAction, RowActions, RowActionsBar } from "@/components/shared/row-actions";
-import { InvoiceRowActions } from "@/components/invoices/invoice-row-actions";
+import { QuickAction, RowActionsBar } from "@/components/shared/row-actions";
+import { CancelInvoiceItem } from "@/components/invoices/cancel-invoice-item";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { listInvoices } from "@/lib/services/invoices";
@@ -18,8 +18,10 @@ import type { InvoiceStatus } from "@prisma/client";
 
 export const metadata = { title: "Invoices" };
 
-export default async function InvoicesPage({ searchParams }: PageProps<"/invoices">) {
-  const sp = await searchParams;
+export default async function InvoicesPage(props: {
+  searchParams: Promise<{ q?: string; status?: string; page?: string }>;
+}) {
+  const sp = (await props.searchParams) || {};
   const q = typeof sp.q === "string" ? sp.q : undefined;
   const status = typeof sp.status === "string" ? (sp.status as InvoiceStatus) : undefined;
   const page = typeof sp.page === "string" ? Number(sp.page) : 1;
@@ -124,9 +126,7 @@ export default async function InvoicesPage({ searchParams }: PageProps<"/invoice
                         {isEditable && (
                           <QuickAction icon={Pencil} label="Edit" href={`/invoices/${inv.id}/edit`} />
                         )}
-                        <RowActions>
-                          <InvoiceRowActions id={inv.id} status={inv.status} />
-                        </RowActions>
+                        <CancelInvoiceItem id={inv.id} status={inv.status} />
                       </RowActionsBar>
                     </TableCell>
                   </TableRow>

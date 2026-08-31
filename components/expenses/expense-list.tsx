@@ -6,7 +6,7 @@ import { Receipt, Eye, Pencil } from "lucide-react";
 import { ExpenseStatusBadge } from "@/components/shared/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState } from "@/components/shared/empty-state";
-import { QuickAction, RowActions, RowActionsBar } from "@/components/shared/row-actions";
+import { QuickAction, RowActionsBar } from "@/components/shared/row-actions";
 import { DeleteExpenseItem } from "@/components/expenses/delete-expense-item";
 import { formatCurrency } from "@/lib/money";
 
@@ -66,9 +66,7 @@ export function ExpenseList({ expenses }: { expenses: any[] }) {
                 <RowActionsBar>
                   <QuickAction icon={Eye} label="View" href={`/expenses/${exp.id}`} />
                   <QuickAction icon={Pencil} label="Edit" href={`/expenses/${exp.id}/edit`} />
-                  <RowActions>
-                    <DeleteExpenseItem expenseId={exp.id} expenseNumber={exp.number} />
-                  </RowActions>
+                  <DeleteExpenseItem expenseId={exp.id} expenseNumber={exp.number} />
                 </RowActionsBar>
               </TableCell>
             </TableRow>

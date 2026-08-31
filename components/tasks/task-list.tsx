@@ -6,7 +6,7 @@ import { CheckSquare, Eye, Pencil } from "lucide-react";
 import { TaskStatusBadge, TaskPriorityBadge } from "@/components/shared/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState } from "@/components/shared/empty-state";
-import { QuickAction, RowActions, RowActionsBar } from "@/components/shared/row-actions";
+import { QuickAction, RowActionsBar } from "@/components/shared/row-actions";
 import { DeleteTaskItem } from "@/components/tasks/delete-task-item";
 import { toggleTaskStatusAction } from "@/lib/actions/tasks";
 import { toast } from "sonner";
@@ -102,9 +102,7 @@ export function TaskList({ tasks }: { tasks: TaskListItem[] }) {
                 <RowActionsBar>
                   <QuickAction icon={Eye} label="View" href={`/tasks/${task.id}`} />
                   <QuickAction icon={Pencil} label="Edit" href={`/tasks/${task.id}/edit`} />
-                  <RowActions>
-                    <DeleteTaskItem taskId={task.id} taskTitle={task.title} />
-                  </RowActions>
+                  <DeleteTaskItem taskId={task.id} taskTitle={task.title} />
                 </RowActionsBar>
               </TableCell>
             </TableRow>

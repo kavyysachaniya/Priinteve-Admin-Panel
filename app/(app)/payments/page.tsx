@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { TableToolbar } from "@/components/shared/table-toolbar";
 import { TablePagination } from "@/components/shared/table-pagination";
-import { QuickAction, RowActions, RowActionsBar } from "@/components/shared/row-actions";
+import { QuickAction, RowActionsBar } from "@/components/shared/row-actions";
 import { PaymentMethodBadge } from "@/components/shared/status-badge";
 import { DeletePaymentItem } from "@/components/payments/delete-payment-item";
 import { Button } from "@/components/ui/button";
@@ -16,8 +16,10 @@ import { formatDate } from "@/lib/format";
 
 export const metadata = { title: "Payments" };
 
-export default async function PaymentsPage({ searchParams }: PageProps<"/payments">) {
-  const sp = await searchParams;
+export default async function PaymentsPage(props: {
+  searchParams: Promise<{ q?: string; page?: string }>;
+}) {
+  const sp = (await props.searchParams) || {};
   const q = typeof sp.q === "string" ? sp.q : undefined;
   const page = typeof sp.page === "string" ? Number(sp.page) : 1;
 
@@ -95,9 +97,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
                   <TableCell>
                     <RowActionsBar>
                       <QuickAction icon={Eye} label="View" href={`/payments/${p.id}`} />
-                      <RowActions>
-                        <DeletePaymentItem paymentId={p.id} />
-                      </RowActions>
+                      <DeletePaymentItem paymentId={p.id} />
                     </RowActionsBar>
                   </TableCell>
                 </TableRow>

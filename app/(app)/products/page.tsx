@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { TableToolbar } from "@/components/shared/table-toolbar";
 import { TableFilterSelect } from "@/components/shared/table-filter-select";
 import { TablePagination } from "@/components/shared/table-pagination";
-import { QuickAction, RowActions, RowActionsBar } from "@/components/shared/row-actions";
+import { QuickAction, RowActionsBar } from "@/components/shared/row-actions";
 import { ProductStatusBadge } from "@/components/shared/status-badge";
 import { DeleteProductItem } from "@/components/products/delete-product-item";
 import { Button } from "@/components/ui/button";
@@ -18,8 +18,10 @@ import type { ProductStatus, ProductType } from "@prisma/client";
 
 export const metadata = { title: "Products & Services" };
 
-export default async function ProductsPage({ searchParams }: PageProps<"/products">) {
-  const sp = await searchParams;
+export default async function ProductsPage(props: {
+  searchParams: Promise<{ q?: string; status?: string; type?: string; page?: string }>;
+}) {
+  const sp = (await props.searchParams) || {};
   const q = typeof sp.q === "string" ? sp.q : undefined;
   const status = typeof sp.status === "string" ? (sp.status as ProductStatus) : undefined;
   const type = typeof sp.type === "string" ? (sp.type as ProductType) : undefined;
@@ -119,9 +121,7 @@ export default async function ProductsPage({ searchParams }: PageProps<"/product
                   <TableCell>
                     <RowActionsBar>
                       <QuickAction icon={Pencil} label="Edit" href={`/products/${product.id}/edit`} />
-                      <RowActions>
-                        <DeleteProductItem productId={product.id} productName={product.name} />
-                      </RowActions>
+                      <DeleteProductItem productId={product.id} productName={product.name} />
                     </RowActionsBar>
                   </TableCell>
                 </TableRow>

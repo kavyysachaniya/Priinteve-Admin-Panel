@@ -6,10 +6,8 @@ import { ShoppingBag, Eye, Pencil } from "lucide-react";
 import { OrderStatusBadge, OrderPriorityBadge } from "@/components/shared/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState } from "@/components/shared/empty-state";
-import { QuickAction, RowActions, RowActionsBar } from "@/components/shared/row-actions";
-import { OrderRowActions } from "@/components/orders/order-row-actions";
+import { QuickAction, RowActionsBar } from "@/components/shared/row-actions";
 import { DeleteOrderItem } from "@/components/orders/delete-order-item";
-import { DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { formatCurrency } from "@/lib/money";
 
 export function OrderList({ orders }: { orders: any[] }) {
@@ -66,11 +64,7 @@ export function OrderList({ orders }: { orders: any[] }) {
                 <RowActionsBar>
                   <QuickAction icon={Eye} label="View" href={`/orders/${order.id}`} />
                   <QuickAction icon={Pencil} label="Edit" href={`/orders/${order.id}/edit`} />
-                  <RowActions>
-                    <OrderRowActions id={order.id} status={order.status} />
-                    <DropdownMenuSeparator />
-                    <DeleteOrderItem orderId={order.id} orderNumber={order.number} />
-                  </RowActions>
+                  <DeleteOrderItem orderId={order.id} orderNumber={order.number} />
                 </RowActionsBar>
               </TableCell>
             </TableRow>

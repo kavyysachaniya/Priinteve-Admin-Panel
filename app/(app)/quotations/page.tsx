@@ -7,12 +7,10 @@ import { TableToolbar } from "@/components/shared/table-toolbar";
 import { TableFilterSelect } from "@/components/shared/table-filter-select";
 import { TablePagination } from "@/components/shared/table-pagination";
 import { QuotationStatusBadge } from "@/components/shared/status-badge";
-import { QuickAction, RowActions, RowActionsBar } from "@/components/shared/row-actions";
-import { QuotationRowActions } from "@/components/quotations/quotation-row-actions";
+import { QuickAction, RowActionsBar } from "@/components/shared/row-actions";
 import { DeleteQuotationItem } from "@/components/quotations/delete-quotation-item";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { listQuotations } from "@/lib/services/quotations";
 import { formatCurrency } from "@/lib/money";
 import { formatDate } from "@/lib/format";
@@ -20,8 +18,10 @@ import type { QuotationStatus } from "@prisma/client";
 
 export const metadata = { title: "Quotations" };
 
-export default async function QuotationsPage({ searchParams }: PageProps<"/quotations">) {
-  const sp = await searchParams;
+export default async function QuotationsPage(props: {
+  searchParams: Promise<{ q?: string; status?: string; page?: string }>;
+}) {
+  const sp = (await props.searchParams) || {};
   const q = typeof sp.q === "string" ? sp.q : undefined;
   const status = typeof sp.status === "string" ? (sp.status as QuotationStatus) : undefined;
   const page = typeof sp.page === "string" ? Number(sp.page) : 1;
@@ -116,11 +116,7 @@ export default async function QuotationsPage({ searchParams }: PageProps<"/quota
                       {q.status !== "CONVERTED" && (
                         <QuickAction icon={Pencil} label="Edit" href={`/quotations/${q.id}/edit`} />
                       )}
-                      <RowActions>
-                        <QuotationRowActions id={q.id} status={q.status} />
-                        {q.status === "DRAFT" && <DropdownMenuSeparator />}
-                        <DeleteQuotationItem id={q.id} number={q.number} status={q.status} />
-                      </RowActions>
+                      <DeleteQuotationItem id={q.id} number={q.number} status={q.status} />
                     </RowActionsBar>
                   </TableCell>
                 </TableRow>

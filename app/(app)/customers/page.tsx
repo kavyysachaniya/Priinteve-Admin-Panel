@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { TableToolbar } from "@/components/shared/table-toolbar";
 import { TableFilterSelect } from "@/components/shared/table-filter-select";
 import { TablePagination } from "@/components/shared/table-pagination";
-import { QuickAction, RowActions, RowActionsBar } from "@/components/shared/row-actions";
+import { QuickAction, RowActionsBar } from "@/components/shared/row-actions";
 import { CustomerStatusBadge } from "@/components/shared/status-badge";
 import { DeleteCustomerItem } from "@/components/customers/delete-customer-item";
 import { Button } from "@/components/ui/button";
@@ -26,10 +26,10 @@ import type { CustomerStatus } from "@prisma/client";
 
 export const metadata = { title: "Customers" };
 
-export default async function CustomersPage({
-  searchParams,
-}: PageProps<"/customers">) {
-  const sp = await searchParams;
+export default async function CustomersPage(props: {
+  searchParams: Promise<{ q?: string; status?: string; page?: string }>;
+}) {
+  const sp = (await props.searchParams) || {};
   const q = typeof sp.q === "string" ? sp.q : undefined;
   const status = typeof sp.status === "string" ? (sp.status as CustomerStatus) : undefined;
   const page = typeof sp.page === "string" ? Number(sp.page) : 1;
@@ -140,9 +140,7 @@ export default async function CustomersPage({
                     <RowActionsBar>
                       <QuickAction icon={Eye} label="View" href={`/customers/${customer.id}`} />
                       <QuickAction icon={Pencil} label="Edit" href={`/customers/${customer.id}/edit`} />
-                      <RowActions>
-                        <DeleteCustomerItem customerId={customer.id} customerName={customer.name} />
-                      </RowActions>
+                      <DeleteCustomerItem customerId={customer.id} customerName={customer.name} />
                     </RowActionsBar>
                   </TableCell>
                 </TableRow>

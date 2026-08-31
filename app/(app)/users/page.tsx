@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { UserPlus, Users, Eye, Pencil } from "lucide-react";
 import { EmptyState } from "@/components/shared/empty-state";
-import { QuickAction, RowActions, RowActionsBar } from "@/components/shared/row-actions";
+import { QuickAction, RowActionsBar } from "@/components/shared/row-actions";
 import { UserStatusItem } from "@/components/users/user-status-item";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -78,9 +78,7 @@ async function UserList() {
                 <RowActionsBar>
                   <QuickAction icon={Eye} label="View" href={`/users/${user.id}`} />
                   <QuickAction icon={Pencil} label="Edit" href={`/users/${user.id}/edit`} />
-                  <RowActions>
-                    <UserStatusItem userId={user.id} userName={user.name} status={user.status} />
-                  </RowActions>
+                  <UserStatusItem userId={user.id} userName={user.name} status={user.status} />
                 </RowActionsBar>
               </TableCell>
             </TableRow>

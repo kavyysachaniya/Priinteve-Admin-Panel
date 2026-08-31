@@ -5,7 +5,7 @@ import { Store, Eye, Pencil } from "lucide-react";
 import { VendorStatusBadge } from "@/components/shared/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState } from "@/components/shared/empty-state";
-import { QuickAction, RowActions, RowActionsBar } from "@/components/shared/row-actions";
+import { QuickAction, RowActionsBar } from "@/components/shared/row-actions";
 import { DeleteVendorItem } from "@/components/vendors/delete-vendor-item";
 import { formatCurrency } from "@/lib/money";
 import type { VendorListItem } from "@/lib/services/vendors";
@@ -56,9 +56,7 @@ export function VendorList({ vendors }: { vendors: VendorListItem[] }) {
                 <RowActionsBar>
                   <QuickAction icon={Eye} label="View" href={`/vendors/${vendor.id}`} />
                   <QuickAction icon={Pencil} label="Edit" href={`/vendors/${vendor.id}/edit`} />
-                  <RowActions>
-                    <DeleteVendorItem vendorId={vendor.id} vendorName={vendor.businessName} />
-                  </RowActions>
+                  <DeleteVendorItem vendorId={vendor.id} vendorName={vendor.businessName} />
                 </RowActionsBar>
               </TableCell>
             </TableRow>
