@@ -112,9 +112,9 @@ export default async function QuotationsPage(props: {
                   <TableCell><QuotationStatusBadge status={q.status} /></TableCell>
                   <TableCell>
                     <RowActionsBar>
-                      <QuickAction icon={Eye} label="View" href={`/quotations/${q.id}`} />
+                      <QuickAction icon={<Eye className="size-3.5" />} label="View" href={`/quotations/${q.id}`} />
                       {q.status !== "CONVERTED" && (
-                        <QuickAction icon={Pencil} label="Edit" href={`/quotations/${q.id}/edit`} />
+                        <QuickAction icon={<Pencil className="size-3.5" />} label="Edit" href={`/quotations/${q.id}/edit`} />
                       )}
                       <DeleteQuotationItem id={q.id} number={q.number} status={q.status} />
                     </RowActionsBar>

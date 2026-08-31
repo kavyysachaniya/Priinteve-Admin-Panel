@@ -54,8 +54,8 @@ export function VendorList({ vendors }: { vendors: VendorListItem[] }) {
               </TableCell>
               <TableCell>
                 <RowActionsBar>
-                  <QuickAction icon={Eye} label="View" href={`/vendors/${vendor.id}`} />
-                  <QuickAction icon={Pencil} label="Edit" href={`/vendors/${vendor.id}/edit`} />
+                  <QuickAction icon={<Eye className="size-3.5" />} label="View" href={`/vendors/${vendor.id}`} />
+                  <QuickAction icon={<Pencil className="size-3.5" />} label="Edit" href={`/vendors/${vendor.id}/edit`} />
                   <DeleteVendorItem vendorId={vendor.id} vendorName={vendor.businessName} />
                 </RowActionsBar>
               </TableCell>

@@ -138,8 +138,8 @@ export default async function CustomersPage(props: {
                   </TableCell>
                   <TableCell>
                     <RowActionsBar>
-                      <QuickAction icon={Eye} label="View" href={`/customers/${customer.id}`} />
-                      <QuickAction icon={Pencil} label="Edit" href={`/customers/${customer.id}/edit`} />
+                      <QuickAction icon={<Eye className="size-3.5" />} label="View" href={`/customers/${customer.id}`} />
+                      <QuickAction icon={<Pencil className="size-3.5" />} label="Edit" href={`/customers/${customer.id}/edit`} />
                       <DeleteCustomerItem customerId={customer.id} customerName={customer.name} />
                     </RowActionsBar>
                   </TableCell>

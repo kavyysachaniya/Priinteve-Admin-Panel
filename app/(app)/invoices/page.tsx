@@ -122,9 +122,9 @@ export default async function InvoicesPage(props: {
                     <TableCell><InvoiceStatusBadge status={inv.effectiveStatus} /></TableCell>
                     <TableCell>
                       <RowActionsBar>
-                        <QuickAction icon={Eye} label="View" href={`/invoices/${inv.id}`} />
+                        <QuickAction icon={<Eye className="size-3.5" />} label="View" href={`/invoices/${inv.id}`} />
                         {isEditable && (
-                          <QuickAction icon={Pencil} label="Edit" href={`/invoices/${inv.id}/edit`} />
+                          <QuickAction icon={<Pencil className="size-3.5" />} label="Edit" href={`/invoices/${inv.id}/edit`} />
                         )}
                         <CancelInvoiceItem id={inv.id} status={inv.status} />
                       </RowActionsBar>

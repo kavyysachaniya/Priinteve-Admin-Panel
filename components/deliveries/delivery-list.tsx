@@ -67,7 +67,7 @@ export function DeliveryList({ deliveries }: { deliveries: any[] }) {
               </TableCell>
               <TableCell>
                 <RowActionsBar>
-                  <QuickAction icon={Eye} label="View" href={`/deliveries/${delivery.id}`} />
+                  <QuickAction icon={<Eye className="size-3.5" />} label="View" href={`/deliveries/${delivery.id}`} />
                 </RowActionsBar>
               </TableCell>
             </TableRow>

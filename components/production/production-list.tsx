@@ -76,7 +76,7 @@ export function ProductionList({
               </TableCell>
               <TableCell>
                 <RowActionsBar>
-                  <QuickAction icon={Eye} label="View" href={`/production/${job.id}`} />
+                  <QuickAction icon={<Eye className="size-3.5" />} label="View" href={`/production/${job.id}`} />
                 </RowActionsBar>
               </TableCell>
             </TableRow>

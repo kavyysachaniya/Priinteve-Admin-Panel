@@ -1,22 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import type { LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
 import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
 /**
  * A single always-visible icon action for a table row (e.g. View, Edit).
+ *
+ * `icon` takes a rendered element (e.g. `<Eye className="size-3.5" />`)
+ * rather than a component reference — QuickAction is a Client Component and
+ * is frequently rendered from Server Component pages, which cannot pass a
+ * component reference as a prop across that boundary (only serializable
+ * values / already-rendered elements survive the RSC hand-off).
  */
 export function QuickAction({
-  icon: Icon,
+  icon,
   label,
   href,
   onClick,
   destructive,
 }: {
-  icon: LucideIcon;
+  icon: ReactNode;
   label: string;
   href?: string;
   onClick?: () => void;
@@ -40,10 +46,10 @@ export function QuickAction({
     >
       {href ? (
         <Link href={href} aria-label={label}>
-          <Icon className="size-3.5" />
+          {icon}
         </Link>
       ) : (
-        <Icon className="size-3.5" />
+        icon
       )}
     </Button>
   );

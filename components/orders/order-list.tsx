@@ -62,8 +62,8 @@ export function OrderList({ orders }: { orders: any[] }) {
               </TableCell>
               <TableCell>
                 <RowActionsBar>
-                  <QuickAction icon={Eye} label="View" href={`/orders/${order.id}`} />
-                  <QuickAction icon={Pencil} label="Edit" href={`/orders/${order.id}/edit`} />
+                  <QuickAction icon={<Eye className="size-3.5" />} label="View" href={`/orders/${order.id}`} />
+                  <QuickAction icon={<Pencil className="size-3.5" />} label="Edit" href={`/orders/${order.id}/edit`} />
                   <DeleteOrderItem orderId={order.id} orderNumber={order.number} />
                 </RowActionsBar>
               </TableCell>

@@ -100,8 +100,8 @@ export function TaskList({ tasks }: { tasks: TaskListItem[] }) {
               </TableCell>
               <TableCell>
                 <RowActionsBar>
-                  <QuickAction icon={Eye} label="View" href={`/tasks/${task.id}`} />
-                  <QuickAction icon={Pencil} label="Edit" href={`/tasks/${task.id}/edit`} />
+                  <QuickAction icon={<Eye className="size-3.5" />} label="View" href={`/tasks/${task.id}`} />
+                  <QuickAction icon={<Pencil className="size-3.5" />} label="Edit" href={`/tasks/${task.id}/edit`} />
                   <DeleteTaskItem taskId={task.id} taskTitle={task.title} />
                 </RowActionsBar>
               </TableCell>

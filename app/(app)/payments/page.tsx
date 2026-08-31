@@ -96,7 +96,7 @@ export default async function PaymentsPage(props: {
                   <TableCell className="text-right text-sm font-medium">{formatCurrency(p.amountPaise)}</TableCell>
                   <TableCell>
                     <RowActionsBar>
-                      <QuickAction icon={Eye} label="View" href={`/payments/${p.id}`} />
+                      <QuickAction icon={<Eye className="size-3.5" />} label="View" href={`/payments/${p.id}`} />
                       <DeletePaymentItem paymentId={p.id} />
                     </RowActionsBar>
                   </TableCell>

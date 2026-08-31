@@ -64,8 +64,8 @@ export function ExpenseList({ expenses }: { expenses: any[] }) {
               </TableCell>
               <TableCell>
                 <RowActionsBar>
-                  <QuickAction icon={Eye} label="View" href={`/expenses/${exp.id}`} />
-                  <QuickAction icon={Pencil} label="Edit" href={`/expenses/${exp.id}/edit`} />
+                  <QuickAction icon={<Eye className="size-3.5" />} label="View" href={`/expenses/${exp.id}`} />
+                  <QuickAction icon={<Pencil className="size-3.5" />} label="Edit" href={`/expenses/${exp.id}/edit`} />
                   <DeleteExpenseItem expenseId={exp.id} expenseNumber={exp.number} />
                 </RowActionsBar>
               </TableCell>

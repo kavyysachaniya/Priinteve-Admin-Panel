@@ -120,7 +120,7 @@ export default async function ProductsPage(props: {
                   </TableCell>
                   <TableCell>
                     <RowActionsBar>
-                      <QuickAction icon={Pencil} label="Edit" href={`/products/${product.id}/edit`} />
+                      <QuickAction icon={<Pencil className="size-3.5" />} label="Edit" href={`/products/${product.id}/edit`} />
                       <DeleteProductItem productId={product.id} productName={product.name} />
                     </RowActionsBar>
                   </TableCell>

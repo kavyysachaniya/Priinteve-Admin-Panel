@@ -76,8 +76,8 @@ async function UserList() {
               </TableCell>
               <TableCell>
                 <RowActionsBar>
-                  <QuickAction icon={Eye} label="View" href={`/users/${user.id}`} />
-                  <QuickAction icon={Pencil} label="Edit" href={`/users/${user.id}/edit`} />
+                  <QuickAction icon={<Eye className="size-3.5" />} label="View" href={`/users/${user.id}`} />
+                  <QuickAction icon={<Pencil className="size-3.5" />} label="Edit" href={`/users/${user.id}/edit`} />
                   <UserStatusItem userId={user.id} userName={user.name} status={user.status} />
                 </RowActionsBar>
               </TableCell>
