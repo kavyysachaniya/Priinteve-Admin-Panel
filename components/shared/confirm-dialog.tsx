@@ -13,7 +13,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
 
 export type ActionResult = { success: true; message?: string } | { success: false; message: string };
 
@@ -57,17 +56,15 @@ export function ConfirmDialog({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
-          <AlertDialogAction asChild>
-            <Button
-              variant={destructive ? "destructive" : "default"}
-              disabled={pending}
-              onClick={(e) => {
-                e.preventDefault();
-                handleConfirm();
-              }}
-            >
-              {pending ? "Please wait…" : confirmLabel}
-            </Button>
+          <AlertDialogAction
+            variant={destructive ? "destructive" : "default"}
+            disabled={pending}
+            onClick={(e) => {
+              e.preventDefault();
+              handleConfirm();
+            }}
+          >
+            {pending ? "Please wait…" : confirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

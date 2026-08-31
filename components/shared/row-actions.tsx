@@ -5,7 +5,6 @@ import type { LucideIcon } from "lucide-react";
 import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 /**
  * A single always-visible icon action for a table row (e.g. View, Edit).
@@ -23,10 +22,12 @@ export function QuickAction({
   onClick?: () => void;
   destructive?: boolean;
 }) {
-  const button = (
+  return (
     <Button
       variant="ghost"
       size="icon"
+      title={label}
+      aria-label={label}
       className={cn(
         "size-7 text-muted-foreground hover:text-foreground transition-colors",
         destructive && "text-muted-foreground hover:text-destructive hover:bg-destructive/10"
@@ -46,13 +47,6 @@ export function QuickAction({
       )}
     </Button>
   );
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>{button}</TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
-  );
 }
 
 /**
@@ -68,24 +62,20 @@ export function DeleteRowButton({
   disabled?: boolean;
 }) {
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          disabled={disabled}
-          className="size-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-          onClick={(e) => {
-            e.stopPropagation();
-            onClick?.();
-          }}
-          aria-label={label}
-        >
-          <Trash2 className="size-3.5" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
+    <Button
+      variant="ghost"
+      size="icon"
+      title={label}
+      aria-label={label}
+      disabled={disabled}
+      className="size-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick?.();
+      }}
+    >
+      <Trash2 className="size-3.5" />
+    </Button>
   );
 }
 
