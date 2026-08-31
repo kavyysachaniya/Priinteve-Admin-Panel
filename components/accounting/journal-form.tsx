@@ -226,7 +226,7 @@ export function JournalForm({ accounts }: { accounts: AccountOption[] }) {
                       onClick={() => removeLine(idx)}
                       className="text-red-500 hover:text-red-700 transition-colors"
                     >
-                      <Trash2 className="size-4" />
+                      <Trash2 className="size-4 text-red-600 dark:text-red-400" />
                     </button>
                   </td>
                 </tr>

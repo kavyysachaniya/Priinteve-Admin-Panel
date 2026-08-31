@@ -12,8 +12,11 @@ export function DeletePaymentButton({ paymentId }: { paymentId: string }) {
   return (
     <ConfirmDialog
       trigger={
-        <Button variant="outline" className="text-destructive hover:text-destructive">
-          <Trash2 className="size-4" /> Delete Payment
+        <Button
+          variant="outline"
+          className="text-red-600 border-red-200 hover:bg-red-50 dark:text-red-400 dark:border-red-900/50 dark:hover:bg-red-950/30"
+        >
+          <Trash2 className="size-4 text-red-600 dark:text-red-400 mr-1.5" /> Delete Payment
         </Button>
       }
       title="Delete this payment?"

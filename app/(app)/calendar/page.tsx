@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths, addWeeks, subWeeks } from "date-fns";
 import { CalendarView } from "@/components/calendar/calendar-view";
 import { PageHeader } from "@/components/shared/page-header";
+import { GoogleCalendarSyncDialog } from "@/components/calendar/google-calendar-sync-dialog";
 import { getCalendarItemsForRange } from "@/lib/services/calendar";
 import { listAllActiveCustomers } from "@/lib/services/customers";
 import { listOrdersForPicker } from "@/lib/services/orders";
@@ -34,7 +35,11 @@ export default async function CalendarPage({
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Calendar" description="Visual schedule of print orders, tasks, deliveries, and company events." />
+      <PageHeader
+        title="Calendar"
+        description="Visual schedule of print orders, tasks, deliveries, and company events."
+        actions={<GoogleCalendarSyncDialog />}
+      />
       <CalendarView
         events={events}
         view={view}

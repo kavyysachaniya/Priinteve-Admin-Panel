@@ -1,36 +1,31 @@
 "use client";
 
 import { useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { toast } from "sonner";
 import { Pencil, Copy, Send, CheckCircle2, XCircle, ArrowRightLeft, Trash2, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { DownloadPdfButton } from "@/components/documents/download-pdf-button";
-import { PrintButton } from "@/components/documents/print-button";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import {
   changeQuotationStatusAction,
   convertQuotationToInvoiceAction,
-  duplicateQuotationAction,
   deleteQuotationAction,
+  duplicateQuotationAction,
 } from "@/lib/actions/quotations";
 import { convertQuotationToOrderAction } from "@/lib/actions/orders";
 import type { QuotationStatus } from "@prisma/client";
-import type { DocumentPreviewData } from "@/lib/types/document";
 
 export function QuotationActions({
   id,
-  number,
   status,
   hasConvertedInvoice,
-  doc,
 }: {
   id: string;
   number?: string;
   status: QuotationStatus;
-  hasConvertedInvoice: boolean;
-  doc?: DocumentPreviewData;
+  hasConvertedInvoice?: boolean;
+  doc?: unknown;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -84,35 +79,48 @@ export function QuotationActions({
   }
 
   return (
-    <div className="print-hide flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2 print-hide">
       {status !== "CONVERTED" && (
-        <Button variant="outline" asChild>
+        <Button asChild variant="outline">
           <Link href={`/quotations/${id}/edit`}>
             <Pencil className="size-4" /> Edit
           </Link>
         </Button>
       )}
+
       <Button variant="outline" onClick={duplicate} disabled={pending}>
         <Copy className="size-4" /> Duplicate
       </Button>
-      <DownloadPdfButton fileName={number ?? "Quotation"} doc={doc} />
-      <PrintButton variant="print" />
 
       {status === "DRAFT" && (
         <Button onClick={() => setStatus("SENT")} disabled={pending}>
           <Send className="size-4" /> Mark as Sent
         </Button>
       )}
+
       {status === "SENT" && (
         <>
-          <Button onClick={() => setStatus("ACCEPTED")} disabled={pending} className="bg-success/15 text-success hover:bg-success/25">
+          <Button onClick={() => setStatus("ACCEPTED")} disabled={pending}>
             <CheckCircle2 className="size-4" /> Mark as Accepted
           </Button>
-          <Button variant="destructive" onClick={() => setStatus("REJECTED")} disabled={pending}>
-            <XCircle className="size-4" /> Mark as Rejected
-          </Button>
+          <ConfirmDialog
+            trigger={
+              <Button variant="outline" className="text-red-600 border-red-200 hover:bg-red-50 dark:text-red-400 dark:border-red-900/50 dark:hover:bg-red-950/30" disabled={pending}>
+                <XCircle className="size-4 text-red-600 dark:text-red-400 mr-1.5" /> Mark as Rejected
+              </Button>
+            }
+            title="Mark as Rejected?"
+            description="The customer declined this quotation. You can reopen it later if needed."
+            confirmLabel="Mark Rejected"
+            onConfirm={async () => {
+              const result = await changeQuotationStatusAction(id, "REJECTED");
+              if (result.success) router.refresh();
+              return result;
+            }}
+          />
         </>
       )}
+
       {status === "ACCEPTED" && !hasConvertedInvoice && (
         <>
           <Button onClick={convert} disabled={pending}>
@@ -127,8 +135,12 @@ export function QuotationActions({
       {status === "DRAFT" && (
         <ConfirmDialog
           trigger={
-            <Button variant="ghost" className="text-muted-foreground hover:text-destructive" disabled={pending}>
-              <Trash2 className="size-4" /> Delete
+            <Button
+              variant="ghost"
+              className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-950/40"
+              disabled={pending}
+            >
+              <Trash2 className="size-4 text-red-600 dark:text-red-400 mr-1.5" /> Delete
             </Button>
           }
           title="Delete this quotation?"

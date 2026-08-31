@@ -103,8 +103,8 @@ export function NoteList({
                     return res;
                   }}
                   trigger={
-                    <Button variant="ghost" size="icon" className="size-8 text-destructive" aria-label="Delete">
-                      <Trash2 className="size-4" />
+                    <Button variant="ghost" size="icon" className="size-8 text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-950/40" aria-label="Delete">
+                      <Trash2 className="size-4 text-red-600 dark:text-red-400" />
                     </Button>
                   }
                 />

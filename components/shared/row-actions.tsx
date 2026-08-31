@@ -8,12 +8,6 @@ import { Button } from "@/components/ui/button";
 
 /**
  * A single always-visible icon action for a table row (e.g. View, Edit).
- *
- * `icon` takes a rendered element (e.g. `<Eye className="size-3.5" />`)
- * rather than a component reference — QuickAction is a Client Component and
- * is frequently rendered from Server Component pages, which cannot pass a
- * component reference as a prop across that boundary (only serializable
- * values / already-rendered elements survive the RSC hand-off).
  */
 export function QuickAction({
   icon,
@@ -36,7 +30,7 @@ export function QuickAction({
       aria-label={label}
       className={cn(
         "size-7 text-muted-foreground hover:text-foreground transition-colors",
-        destructive && "text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+        destructive && "text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-950/40"
       )}
       asChild={!!href}
       onClick={(e) => {
@@ -56,7 +50,7 @@ export function QuickAction({
 }
 
 /**
- * Delete action trigger button with Trash2 Lucide icon.
+ * Delete action trigger button with permanently bright red Trash2 Lucide icon.
  */
 export function DeleteRowButton({
   label = "Delete",
@@ -74,13 +68,13 @@ export function DeleteRowButton({
       title={label}
       aria-label={label}
       disabled={disabled}
-      className="size-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+      className="size-7 text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-950/40 transition-colors"
       onClick={(e) => {
         e.stopPropagation();
         onClick?.();
       }}
     >
-      <Trash2 className="size-3.5" />
+      <Trash2 className="size-3.5 text-red-600 dark:text-red-400" />
     </Button>
   );
 }

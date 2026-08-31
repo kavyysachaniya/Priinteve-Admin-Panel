@@ -27,7 +27,7 @@ export function UserStatusItem({
         variant="ghost"
         size="icon"
         disabled={pending}
-        className="size-7 text-muted-foreground hover:text-emerald-600 transition-colors"
+        className="size-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40 transition-colors"
         title="Activate User"
         onClick={() => {
           startTransition(async () => {
@@ -53,7 +53,7 @@ export function UserStatusItem({
           variant="ghost"
           size="icon"
           disabled={pending}
-          className="size-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+          className="size-7 text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-950/40 transition-colors"
           title="Deactivate / Remove User"
         >
           <Trash2 className="size-3.5" />
