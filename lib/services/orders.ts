@@ -2,7 +2,7 @@ import { prisma, TX_OPTIONS } from "@/lib/prisma";
 import { generateOrderNumber, issueDocumentNumber } from "@/lib/services/numbering";
 import { logActivity } from "@/lib/services/activity";
 import type { OrderFormValues } from "@/lib/validations/order";
-import type { Prisma, OrderStatus, OrderPriority } from "@prisma/client";
+import type { Prisma, Order, OrderItem, OrderStatus } from "@prisma/client";
 
 const PAGE_SIZE = 15;
 
@@ -51,12 +51,44 @@ export async function listOrders(params: ListOrdersParams) {
   }
 }
 
+/**
+ * A lightweight order list for "pick an order" selects (production/delivery
+ * creation). Not paginated — capped at a sane count for an internal tool.
+ */
+export async function listOrdersForPicker(opts: { excludeCancelled?: boolean; requireNoDelivery?: boolean } = {}) {
+  const { excludeCancelled = true, requireNoDelivery = false } = opts;
+  return prisma.order.findMany({
+    where: {
+      ...(excludeCancelled ? { status: { not: "CANCELLED" } } : {}),
+      ...(requireNoDelivery ? { delivery: null } : {}),
+    },
+    orderBy: { orderDate: "desc" },
+    take: 100,
+    select: {
+      id: true,
+      number: true,
+      status: true,
+      customer: { select: { id: true, name: true } },
+    },
+  });
+}
+
 export async function getOrderDetail(id: string) {
   try {
     const order = await prisma.order.findUnique({
       where: { id },
       include: {
-        customer: { select: { id: true, name: true, phone: true, email: true, gstin: true } },
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            email: true,
+            gstin: true,
+            shippingAddress: true,
+            billingAddress: true,
+          },
+        },
         items: { include: { product: { select: { id: true, name: true } } } },
         productionJobs: { orderBy: { createdAt: "asc" } },
         delivery: true,
@@ -78,14 +110,14 @@ export async function getOrderDetail(id: string) {
   }
 }
 
-export function orderToFormValues(order: any): OrderFormValues {
+export function orderToFormValues(order: Order & { items: OrderItem[] }): OrderFormValues {
   return {
     customerId: order.customerId,
     title: order.notes ?? "",
     priority: order.priority,
     orderDate: order.orderDate ? new Date(order.orderDate).toISOString().slice(0, 10) : "",
     expectedCompletionDate: order.expectedCompletionDate ? new Date(order.expectedCompletionDate).toISOString().slice(0, 10) : "",
-    items: order.items.map((i: any) => ({
+    items: order.items.map((i: OrderItem) => ({
       productId: i.productId ?? "",
       name: i.name,
       description: i.description ?? "",

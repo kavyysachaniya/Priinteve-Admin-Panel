@@ -2,30 +2,35 @@
 
 import Link from "next/link";
 import { format } from "date-fns";
-import { Truck } from "lucide-react";
+import { Truck, Eye } from "lucide-react";
 import { DeliveryStatusBadge } from "@/components/shared/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { EmptyState } from "@/components/shared/empty-state";
+import { QuickAction, RowActionsBar } from "@/components/shared/row-actions";
 
 export function DeliveryList({ deliveries }: { deliveries: any[] }) {
   if (deliveries.length === 0) {
     return (
-      <div className="rounded-lg border bg-card p-8 text-center text-xs text-muted-foreground italic">
-        No delivery dispatches found.
-      </div>
+      <EmptyState
+        icon={Truck}
+        title="No deliveries found"
+        description="Deliveries are created from orders once they're ready to dispatch."
+      />
     );
   }
 
   return (
-    <div className="rounded-lg border bg-card overflow-hidden">
+    <div className="rounded-lg border bg-card">
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Delivery #</TableHead>
             <TableHead>Customer</TableHead>
-            <TableHead>Order #</TableHead>
-            <TableHead>Method & Courier</TableHead>
-            <TableHead>Date</TableHead>
+            <TableHead className="hidden md:table-cell">Order #</TableHead>
+            <TableHead className="hidden lg:table-cell">Method & Tracking</TableHead>
+            <TableHead className="hidden md:table-cell">Date</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead className="w-10" />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -41,20 +46,29 @@ export function DeliveryList({ deliveries }: { deliveries: any[] }) {
                   {delivery.customer.name}
                 </Link>
               </TableCell>
-              <TableCell className="text-xs">
+              <TableCell className="hidden text-xs md:table-cell">
                 <Link href={`/orders/${delivery.order.id}`} className="text-primary hover:underline">
                   {delivery.order.number}
                 </Link>
               </TableCell>
-              <TableCell className="text-xs">
+              <TableCell className="hidden text-xs lg:table-cell">
                 <span className="font-medium text-foreground">{delivery.deliveryMethod.replace("_", " ")}</span>
-                {delivery.courierPartner && (
-                  <span className="text-muted-foreground block text-[11px]">{delivery.courierPartner} {delivery.trackingNumber ? `(${delivery.trackingNumber})` : ""}</span>
+                {(delivery.assignedPerson || delivery.trackingNumber) && (
+                  <span className="text-muted-foreground block text-[11px]">
+                    {delivery.assignedPerson}
+                    {delivery.assignedPerson && delivery.trackingNumber ? " · " : ""}
+                    {delivery.trackingNumber}
+                  </span>
                 )}
               </TableCell>
-              <TableCell className="text-xs">{format(new Date(delivery.deliveryDate), "d MMM yyyy")}</TableCell>
+              <TableCell className="hidden text-xs md:table-cell">{format(new Date(delivery.deliveryDate), "d MMM yyyy")}</TableCell>
               <TableCell>
                 <DeliveryStatusBadge status={delivery.status} />
+              </TableCell>
+              <TableCell>
+                <RowActionsBar>
+                  <QuickAction icon={Eye} label="View" href={`/deliveries/${delivery.id}`} />
+                </RowActionsBar>
               </TableCell>
             </TableRow>
           ))}
@@ -63,4 +77,3 @@ export function DeliveryList({ deliveries }: { deliveries: any[] }) {
     </div>
   );
 }
-

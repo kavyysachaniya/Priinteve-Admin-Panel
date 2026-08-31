@@ -5,10 +5,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { toast } from "sonner";
 import { useSession, signOut } from "next-auth/react";
-import { Menu, Search, Plus, Bell, Settings, LogOut, UserRound, ChevronDown } from "lucide-react";
+import { Menu, Search, Plus, Bell, Settings, LogOut, ChevronDown } from "lucide-react";
 import { NAV_SECTIONS, QUICK_ACTIONS } from "@/lib/nav-config";
 import { ROLE_PERMISSIONS } from "@/lib/auth/permissions";
-import type { UserRole } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -24,6 +23,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { LogoMark } from "@/components/layout/logo-mark";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 
 function currentSectionLabel(pathname: string): string {
   for (const section of NAV_SECTIONS) {
@@ -53,7 +53,7 @@ export function Topbar() {
   const { data: session } = useSession();
 
   const user = session?.user;
-  const role = (user as any)?.role as UserRole | undefined;
+  const role = user?.role;
 
   // Filter quick actions based on permissions
   const filteredQuickActions = QUICK_ACTIONS.filter((action) => {
@@ -75,7 +75,7 @@ export function Topbar() {
       </Button>
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="left" className="w-[260px] bg-sidebar p-0 text-sidebar-foreground [&_svg]:shrink-0">
+        <SheetContent side="left" className="w-[260px] bg-sidebar p-0 text-sidebar-foreground border-r border-sidebar-border [&_svg]:shrink-0">
           <SheetHeader className="h-14 flex-row items-center border-b border-sidebar-border px-4">
             <SheetTitle asChild>
               <LogoMark />
@@ -92,7 +92,7 @@ export function Topbar() {
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search customers, quotations, invoices…"
-            className="h-9 bg-muted/50 pl-8"
+            className="h-9 bg-muted/50 pl-8 text-sm"
             onFocus={(e) => e.currentTarget.blur()}
             readOnly
             onClick={() => toast.info("Global search is coming soon")}
@@ -104,7 +104,7 @@ export function Topbar() {
         {filteredQuickActions.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="sm" className="gap-1.5">
+              <Button size="sm" className="gap-1.5 font-medium shadow-xs">
                 <Plus className="size-4" />
                 <span className="hidden sm:inline">New</span>
                 <ChevronDown className="size-3.5 opacity-70" />
@@ -119,6 +119,8 @@ export function Topbar() {
             </DropdownMenuContent>
           </DropdownMenu>
         )}
+
+        <ThemeToggle />
 
         <Popover>
           <PopoverTrigger asChild>
@@ -137,7 +139,7 @@ export function Topbar() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="ml-1 flex items-center gap-2 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              <Avatar className="size-8">
+              <Avatar className="size-8 ring-1 ring-border">
                 <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
                   {getInitials(user?.name)}
                 </AvatarFallback>
@@ -158,11 +160,6 @@ export function Topbar() {
             <DropdownMenuItem asChild>
               <Link href="/settings">
                 <Settings className="size-4" /> Settings
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/settings">
-                <UserRound className="size-4" /> Profile
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />

@@ -397,6 +397,7 @@ model Delivery {
   deliveryAddress String
   contactNumber   String
   deliveryDate    DateTime
+  actualDeliveryDate DateTime?
   deliveryMethod  DeliveryMethod @default(COURIER)
   trackingNumber  String?
   assignedPerson  String?

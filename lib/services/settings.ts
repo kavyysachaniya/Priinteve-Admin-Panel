@@ -1,10 +1,11 @@
 import { prisma } from "@/lib/prisma";
-import type { Prisma } from "@prisma/client";
+import type { CompanySettings, Prisma } from "@prisma/client";
 
-const DEFAULT_SETTINGS = {
+const DEFAULT_SETTINGS: CompanySettings = {
   id: "default",
   name: "Priinteve",
   tagline: "Print. Design. Digital.",
+  logoUrl: null,
   addressLine1: "",
   addressLine2: "",
   city: "",
@@ -27,19 +28,18 @@ const DEFAULT_SETTINGS = {
   defaultGstRate: 18,
   defaultValidityDays: 15,
   defaultDueDays: 15,
-  createdAt: new Date(),
   updatedAt: new Date(),
 };
 
 /** Returns the single CompanySettings row, creating it with sensible defaults on first access. */
-export async function getCompanySettings() {
+export async function getCompanySettings(): Promise<CompanySettings> {
   try {
     const existing = await prisma.companySettings.findFirst();
     if (existing) return existing;
-    return await prisma.companySettings.create({ data: DEFAULT_SETTINGS as any });
+    return await prisma.companySettings.create({ data: DEFAULT_SETTINGS });
   } catch (err) {
     console.error("Error fetching company settings:", err);
-    return DEFAULT_SETTINGS as any;
+    return DEFAULT_SETTINGS;
   }
 }
 

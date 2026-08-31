@@ -12,7 +12,9 @@ const createPeriodSchema = z.object({
   endDate: z.string().min(1, "End date is required"),
 });
 
-export async function createAccountingPeriodAction(values: any): Promise<FormActionResult> {
+export type CreatePeriodInput = z.infer<typeof createPeriodSchema>;
+
+export async function createAccountingPeriodAction(values: unknown): Promise<FormActionResult> {
   await requirePermission("accounting:manage");
   const parsed = createPeriodSchema.safeParse(values);
   if (!parsed.success) {

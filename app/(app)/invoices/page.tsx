@@ -1,12 +1,14 @@
 export const dynamic = "force-dynamic";
 import Link from "next/link";
-import { Plus, ReceiptText } from "lucide-react";
+import { Plus, ReceiptText, Eye, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { TableToolbar } from "@/components/shared/table-toolbar";
 import { TableFilterSelect } from "@/components/shared/table-filter-select";
 import { TablePagination } from "@/components/shared/table-pagination";
 import { InvoiceStatusBadge } from "@/components/shared/status-badge";
+import { QuickAction, RowActions, RowActionsBar } from "@/components/shared/row-actions";
+import { InvoiceRowActions } from "@/components/invoices/invoice-row-actions";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { listInvoices } from "@/lib/services/invoices";
@@ -77,20 +79,22 @@ export default async function InvoicesPage({ searchParams }: PageProps<"/invoice
             }
           />
         ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Number</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Due Date</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="text-right">Outstanding</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {invoices.map((inv) => (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Number</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead className="hidden md:table-cell">Due Date</TableHead>
+                <TableHead className="text-right">Total</TableHead>
+                <TableHead className="text-right">Outstanding</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="w-10" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {invoices.map((inv) => {
+                const isEditable = !inv.sourceQuotationId && inv.amountPaidPaise === 0 && inv.status !== "CANCELLED";
+                return (
                   <TableRow key={inv.id}>
                     <TableCell>
                       <Link href={`/invoices/${inv.id}`} className="font-medium text-primary hover:underline">
@@ -102,7 +106,7 @@ export default async function InvoicesPage({ searchParams }: PageProps<"/invoice
                         {inv.customer.name}
                       </Link>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{formatDate(inv.dueDate)}</TableCell>
+                    <TableCell className="hidden text-sm text-muted-foreground md:table-cell">{formatDate(inv.dueDate)}</TableCell>
                     <TableCell className="text-right text-sm font-medium">{formatCurrency(inv.totalPaise)}</TableCell>
                     <TableCell className="text-right text-sm">
                       {inv.totalPaise - inv.amountPaidPaise > 0 ? (
@@ -114,11 +118,22 @@ export default async function InvoicesPage({ searchParams }: PageProps<"/invoice
                       )}
                     </TableCell>
                     <TableCell><InvoiceStatusBadge status={inv.effectiveStatus} /></TableCell>
+                    <TableCell>
+                      <RowActionsBar>
+                        <QuickAction icon={Eye} label="View" href={`/invoices/${inv.id}`} />
+                        {isEditable && (
+                          <QuickAction icon={Pencil} label="Edit" href={`/invoices/${inv.id}/edit`} />
+                        )}
+                        <RowActions>
+                          <InvoiceRowActions id={inv.id} status={inv.status} />
+                        </RowActions>
+                      </RowActionsBar>
+                    </TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                );
+              })}
+            </TableBody>
+          </Table>
         )}
 
         <TablePagination page={page} pageSize={pageSize} total={total} />

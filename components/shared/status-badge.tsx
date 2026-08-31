@@ -18,9 +18,9 @@ import type {
 const toneClasses = {
   neutral: "bg-muted text-muted-foreground border-transparent",
   info: "bg-primary/10 text-primary border-transparent",
-  success: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-transparent",
-  warning: "bg-amber-500/20 text-amber-800 dark:text-amber-300 border-transparent",
-  destructive: "bg-rose-500/15 text-rose-700 dark:text-rose-400 border-transparent",
+  success: "bg-success/15 text-success border-transparent",
+  warning: "bg-warning/15 text-warning border-transparent",
+  destructive: "bg-destructive/15 text-destructive border-transparent",
   purple: "bg-purple-500/15 text-purple-700 dark:text-purple-400 border-transparent",
 } as const;
 

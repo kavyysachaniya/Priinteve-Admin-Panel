@@ -25,7 +25,7 @@ export function ExpenseBreakdownChart({
             </div>
             <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
               <div
-                className="h-full bg-rose-500 rounded-full transition-all duration-300"
+                className="h-full rounded-full bg-[var(--chart-4)] transition-all duration-300"
                 style={{ width: `${Math.max(pct, 4)}%` }}
               />
             </div>

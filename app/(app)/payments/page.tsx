@@ -5,12 +5,11 @@ import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { TableToolbar } from "@/components/shared/table-toolbar";
 import { TablePagination } from "@/components/shared/table-pagination";
-import { RowActions } from "@/components/shared/row-actions";
+import { QuickAction, RowActions, RowActionsBar } from "@/components/shared/row-actions";
 import { PaymentMethodBadge } from "@/components/shared/status-badge";
 import { DeletePaymentItem } from "@/components/payments/delete-payment-item";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { listPayments } from "@/lib/services/payments";
 import { formatCurrency } from "@/lib/money";
 import { formatDate } from "@/lib/format";
@@ -64,52 +63,47 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
             }
           />
         ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Invoice</TableHead>
-                  <TableHead>Method</TableHead>
-                  <TableHead>Reference</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="w-10" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {payments.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell className="text-sm">{formatDate(p.paymentDate)}</TableCell>
-                    <TableCell>
-                      <Link href={`/customers/${p.customer.id}`} className="hover:underline">
-                        {p.customer.name}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      <Link href={`/invoices/${p.invoice.id}`} className="font-medium text-primary hover:underline">
-                        {p.invoice.number}
-                      </Link>
-                    </TableCell>
-                    <TableCell><PaymentMethodBadge method={p.method} /></TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{p.referenceNumber || "—"}</TableCell>
-                    <TableCell className="text-right text-sm font-medium">{formatCurrency(p.amountPaise)}</TableCell>
-                    <TableCell>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead className="hidden md:table-cell">Invoice</TableHead>
+                <TableHead className="hidden lg:table-cell">Method</TableHead>
+                <TableHead className="hidden xl:table-cell">Reference</TableHead>
+                <TableHead className="text-right">Amount</TableHead>
+                <TableHead className="w-10" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {payments.map((p) => (
+                <TableRow key={p.id}>
+                  <TableCell className="text-sm">{formatDate(p.paymentDate)}</TableCell>
+                  <TableCell>
+                    <Link href={`/customers/${p.customer.id}`} className="hover:underline">
+                      {p.customer.name}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    <Link href={`/invoices/${p.invoice.id}`} className="font-medium text-primary hover:underline">
+                      {p.invoice.number}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="hidden lg:table-cell"><PaymentMethodBadge method={p.method} /></TableCell>
+                  <TableCell className="hidden text-sm text-muted-foreground xl:table-cell">{p.referenceNumber || "—"}</TableCell>
+                  <TableCell className="text-right text-sm font-medium">{formatCurrency(p.amountPaise)}</TableCell>
+                  <TableCell>
+                    <RowActionsBar>
+                      <QuickAction icon={Eye} label="View" href={`/payments/${p.id}`} />
                       <RowActions>
-                        <DropdownMenuItem asChild>
-                          <Link href={`/payments/${p.id}`}>
-                            <Eye className="size-4" /> View
-                          </Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
                         <DeletePaymentItem paymentId={p.id} />
                       </RowActions>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                    </RowActionsBar>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
 
         <TablePagination page={page} pageSize={pageSize} total={total} />

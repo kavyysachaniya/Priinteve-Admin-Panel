@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { format } from "date-fns";
-import { Store, Phone, Mail, MapPin, Edit, Trash2, Plus } from "lucide-react";
+import { Edit, Trash2, Plus } from "lucide-react";
 import { VendorStatusBadge, ExpenseStatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,10 +12,10 @@ import { ActivityTimeline } from "@/components/shared/activity-timeline";
 import { formatCurrency } from "@/lib/money";
 import { deleteVendorAction } from "@/lib/actions/vendors";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import type { VendorDetail as VendorDetailType } from "@/lib/services/vendors";
 
-export function VendorDetail({ vendor }: { vendor: any }) {
+export function VendorDetail({ vendor }: { vendor: VendorDetailType }) {
   const router = useRouter();
 
   return (
@@ -149,7 +149,7 @@ export function VendorDetail({ vendor }: { vendor: any }) {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    vendor.expenses.map((exp: any) => (
+                    vendor.expenses.map((exp) => (
                       <TableRow key={exp.id}>
                         <TableCell className="text-xs">{format(new Date(exp.date), "d MMM yyyy")}</TableCell>
                         <TableCell className="font-semibold text-xs">
@@ -203,4 +203,3 @@ export function VendorDetail({ vendor }: { vendor: any }) {
     </div>
   );
 }
-

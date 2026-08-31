@@ -1,12 +1,25 @@
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/services/activity";
+import { generateProductionNumber } from "@/lib/services/numbering";
+import type { ProductionJobFormValues } from "@/lib/validations/production";
 import type { Prisma, ProductionStatus, OrderPriority } from "@prisma/client";
 
 const PAGE_SIZE = 15;
 
+const ALL_PRODUCTION_STATUSES: ProductionStatus[] = [
+  "PENDING",
+  "ASSIGNED",
+  "IN_PROGRESS",
+  "QUALITY_CHECK",
+  "COMPLETED",
+  "ON_HOLD",
+];
+
 export interface ListProductionJobsParams {
   q?: string;
   stage?: ProductionStatus;
+  priority?: OrderPriority;
+  assignedToId?: string;
   orderId?: string;
   page?: number;
 }
@@ -16,6 +29,8 @@ export async function listProductionJobs(params: ListProductionJobsParams) {
     const page = Math.max(1, params.page ?? 1);
     const where: Prisma.ProductionJobWhereInput = {
       ...(params.stage ? { status: params.stage } : {}),
+      ...(params.priority ? { priority: params.priority } : {}),
+      ...(params.assignedToId ? { assignedToId: params.assignedToId } : {}),
       ...(params.orderId ? { orderId: params.orderId } : {}),
       ...(params.q
         ? {
@@ -57,6 +72,7 @@ export async function getProductionJobDetail(id: string) {
       include: {
         order: { select: { id: true, number: true, notes: true, customer: { select: { name: true } } } },
         assignedTo: { select: { id: true, name: true } },
+        product: { select: { id: true, name: true } },
         history: { orderBy: { createdAt: "desc" } },
       },
     });
@@ -131,4 +147,80 @@ export async function updateProductionJobStatus(
   });
 
   return updated;
+}
+
+/**
+ * Counts of production jobs per stage, for the summary tiles on the
+ * production list page. Independent of any list pagination/filtering.
+ */
+export async function getProductionStageCounts(): Promise<Record<ProductionStatus, number>> {
+  const counts = await prisma.productionJob.groupBy({
+    by: ["status"],
+    _count: { _all: true },
+  });
+
+  const result = Object.fromEntries(ALL_PRODUCTION_STATUSES.map((s) => [s, 0])) as Record<
+    ProductionStatus,
+    number
+  >;
+  for (const c of counts) {
+    result[c.status] = c._count._all;
+  }
+  return result;
+}
+
+/**
+ * Create a production job from an existing order (optionally seeded from one
+ * of the order's line items so item/product/quantity don't have to be
+ * retyped). customerId is always derived from the order, never user-supplied.
+ */
+export async function createProductionJob(data: ProductionJobFormValues, userId?: string) {
+  const order = await prisma.order.findUnique({
+    where: { id: data.orderId },
+    select: { id: true, customerId: true, number: true },
+  });
+  if (!order) throw new Error("Order not found.");
+
+  const number = await generateProductionNumber();
+
+  const job = await prisma.$transaction(async (tx) => {
+    const created = await tx.productionJob.create({
+      data: {
+        number,
+        orderId: order.id,
+        customerId: order.customerId,
+        productId: data.productId || null,
+        itemName: data.itemName,
+        quantity: data.quantity,
+        assignedToId: data.assignedToId || null,
+        startDate: data.startDate ? new Date(data.startDate) : null,
+        expectedCompletionDate: data.expectedCompletionDate ? new Date(data.expectedCompletionDate) : null,
+        priority: data.priority as OrderPriority,
+        internalNotes: data.internalNotes || null,
+      },
+    });
+
+    await tx.productionJobHistory.create({
+      data: {
+        productionJobId: created.id,
+        status: "PENDING",
+        notes: "Job created",
+        changedById: userId || null,
+      },
+    });
+
+    return created;
+  });
+
+  await logActivity({
+    type: "production.created",
+    message: `Production job ${job.number} created from order ${order.number}`,
+    entityType: "production",
+    entityId: job.id,
+    productionJobId: job.id,
+    orderId: job.orderId,
+    userId,
+  });
+
+  return job;
 }

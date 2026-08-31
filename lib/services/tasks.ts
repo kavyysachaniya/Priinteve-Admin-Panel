@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/services/activity";
 import type { TaskFormValues } from "@/lib/validations/task";
-import type { Prisma, TaskPriority, TaskStatus } from "@prisma/client";
+import type { Prisma, Task, TaskPriority, TaskStatus } from "@prisma/client";
 
 const PAGE_SIZE = 15;
 
@@ -15,6 +15,16 @@ export interface ListTasksParams {
   orderId?: string;
   invoiceId?: string;
   page?: number;
+}
+
+/** A lightweight, uncompleted-tasks list for "link a task" selects (calendar events). */
+export async function listTasksForPicker() {
+  return prisma.task.findMany({
+    where: { status: { notIn: ["COMPLETED", "CANCELLED"] } },
+    orderBy: { dueDate: "asc" },
+    take: 100,
+    select: { id: true, title: true },
+  });
 }
 
 export async function listTasks(params: ListTasksParams) {
@@ -82,6 +92,14 @@ export async function listTasks(params: ListTasksParams) {
   }
 }
 
+export type TaskListItem = Prisma.TaskGetPayload<{
+  include: {
+    assignedTo: { select: { id: true; name: true } };
+    customer: { select: { id: true; name: true } };
+    order: { select: { id: true; number: true } };
+  };
+}>;
+
 export async function getTaskDetail(id: string) {
   try {
     const task = await prisma.task.findUnique({
@@ -103,7 +121,9 @@ export async function getTaskDetail(id: string) {
   }
 }
 
-export function taskToFormValues(task: any): TaskFormValues {
+export type TaskDetail = NonNullable<Awaited<ReturnType<typeof getTaskDetail>>>;
+
+export function taskToFormValues(task: Task): TaskFormValues {
   return {
     title: task.title,
     description: task.description ?? "",

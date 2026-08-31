@@ -167,7 +167,9 @@ export function OrderDetail({ order }: { order: any }) {
                       <span className="text-muted-foreground ml-2 text-[11px] font-mono">Stage: {job.status}</span>
                     </div>
                     <Button asChild size="xs" variant="ghost">
-                      <Link href={`/production/${job.id}`}>View Job →</Link>
+                      <Link href={`/production/${job.id}`} className="flex items-center gap-1">
+                        View Job <ArrowRight className="size-3" />
+                      </Link>
                     </Button>
                   </div>
                 ))

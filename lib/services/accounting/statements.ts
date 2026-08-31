@@ -6,7 +6,6 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { deriveInvoiceStatus } from "@/lib/services/invoices";
 
 // ---------------------------------------------------------------------------
 // Customer Statement

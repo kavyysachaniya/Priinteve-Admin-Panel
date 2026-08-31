@@ -3,7 +3,7 @@ import { generateExpenseNumber } from "@/lib/services/numbering";
 import { logActivity } from "@/lib/services/activity";
 import { postExpenseJournal, reverseExpenseJournal } from "@/lib/services/accounting/auto-accounting";
 import type { ExpenseFormValues } from "@/lib/validations/expense";
-import type { Prisma, ExpenseStatus } from "@prisma/client";
+import type { Prisma, Expense, ExpenseStatus } from "@prisma/client";
 
 const PAGE_SIZE = 15;
 
@@ -90,7 +90,7 @@ export async function getExpenseDetail(id: string) {
   }
 }
 
-export function expenseToFormValues(expense: any): ExpenseFormValues {
+export function expenseToFormValues(expense: Expense): ExpenseFormValues {
   return {
     description: expense.description,
     categoryId: expense.categoryId,

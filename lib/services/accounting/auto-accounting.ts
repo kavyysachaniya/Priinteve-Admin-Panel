@@ -11,8 +11,7 @@
  * (invoices.ts, payments.ts, expenses.ts) so everything stays atomic.
  */
 
-import { prisma } from "@/lib/prisma";
-import { getAccountByCode, SYSTEM_ACCOUNT_CODES } from "./accounts";
+import { SYSTEM_ACCOUNT_CODES } from "./accounts";
 import type { Invoice, Payment, Expense, Prisma } from "@prisma/client";
 import { createJournalEntry } from "./journal";
 
@@ -35,7 +34,7 @@ async function requireAccount(code: string, db: Prisma.TransactionClient) {
 // Map product category → revenue account code
 // ---------------------------------------------------------------------------
 
-const REVENUE_ACCOUNT_CODES: Record<string, string> = {
+export const REVENUE_ACCOUNT_CODES: Record<string, string> = {
   "4010": "Printing",
   "4020": "Digital Card",
   "4030": "Digital Menu",

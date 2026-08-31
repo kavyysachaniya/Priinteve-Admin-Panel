@@ -1,20 +1,44 @@
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/services/activity";
-import type { DeliveryStatus, DeliveryMethod, Prisma } from "@prisma/client";
+import { generateDeliveryNumber } from "@/lib/services/numbering";
+import type { DeliveryFormValues } from "@/lib/validations/delivery";
+import type { DeliveryStatus, Prisma } from "@prisma/client";
 
 const PAGE_SIZE = 15;
+
+const ALL_DELIVERY_STATUSES: DeliveryStatus[] = [
+  "PENDING",
+  "SCHEDULED",
+  "OUT_FOR_DELIVERY",
+  "DELIVERED",
+  "FAILED",
+  "RETURNED",
+];
 
 export interface ListDeliveriesParams {
   q?: string;
   status?: DeliveryStatus;
+  assignedPerson?: string;
+  deliveryDate?: string;
   page?: number;
 }
 
 export async function listDeliveries(params: ListDeliveriesParams) {
   try {
     const page = Math.max(1, params.page ?? 1);
+
+    let deliveryDateFilter: Prisma.DeliveryWhereInput = {};
+    if (params.deliveryDate) {
+      const start = new Date(params.deliveryDate);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 1);
+      deliveryDateFilter = { deliveryDate: { gte: start, lt: end } };
+    }
+
     const where: Prisma.DeliveryWhereInput = {
       ...(params.status ? { status: params.status } : {}),
+      ...(params.assignedPerson ? { assignedPerson: params.assignedPerson } : {}),
+      ...deliveryDateFilter,
       ...(params.q
         ? {
             OR: [
@@ -124,4 +148,79 @@ export async function updateDeliveryStatus(
   });
 
   return updated;
+}
+
+/** Counts of deliveries per status, for the summary tiles on the list page. */
+export async function getDeliveryStatusCounts(): Promise<Record<DeliveryStatus, number>> {
+  const counts = await prisma.delivery.groupBy({
+    by: ["status"],
+    _count: { _all: true },
+  });
+
+  const result = Object.fromEntries(ALL_DELIVERY_STATUSES.map((s) => [s, 0])) as Record<DeliveryStatus, number>;
+  for (const c of counts) {
+    result[c.status] = c._count._all;
+  }
+  return result;
+}
+
+/** Distinct, non-empty assignedPerson values currently on record — for the filter dropdown. */
+export async function listAssignedPersons(): Promise<string[]> {
+  const rows = await prisma.delivery.findMany({
+    where: { assignedPerson: { not: null } },
+    select: { assignedPerson: true },
+    distinct: ["assignedPerson"],
+    orderBy: { assignedPerson: "asc" },
+  });
+  return rows.map((r) => r.assignedPerson).filter((v): v is string => Boolean(v));
+}
+
+/**
+ * Create a delivery from an order that doesn't already have one (1:1
+ * relation). customerId is always derived from the order.
+ */
+export async function createDelivery(data: DeliveryFormValues) {
+  const order = await prisma.order.findUnique({
+    where: { id: data.orderId },
+    select: { id: true, customerId: true, number: true, delivery: { select: { id: true } } },
+  });
+  if (!order) throw new Error("Order not found.");
+  if (order.delivery) throw new Error("This order already has a delivery.");
+
+  const number = await generateDeliveryNumber();
+
+  const delivery = await prisma.$transaction(async (tx) => {
+    const created = await tx.delivery.create({
+      data: {
+        number,
+        orderId: order.id,
+        customerId: order.customerId,
+        deliveryAddress: data.deliveryAddress,
+        contactNumber: data.contactNumber,
+        deliveryDate: new Date(data.deliveryDate),
+        deliveryMethod: data.deliveryMethod,
+        trackingNumber: data.trackingNumber || null,
+        assignedPerson: data.assignedPerson || null,
+        notes: data.notes || null,
+      },
+    });
+
+    await tx.deliveryStatusHistory.create({
+      data: { deliveryId: created.id, status: "PENDING", notes: "Delivery created" },
+    });
+
+    return created;
+  });
+
+  await logActivity({
+    type: "delivery.created",
+    message: `Delivery ${delivery.number} created for order ${order.number}`,
+    entityType: "delivery",
+    entityId: delivery.id,
+    deliveryId: delivery.id,
+    customerId: delivery.customerId,
+    orderId: delivery.orderId,
+  });
+
+  return delivery;
 }

@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { format } from "date-fns";
-import { Factory } from "lucide-react";
+import { Factory, Eye } from "lucide-react";
 import { ProductionStatusBadge, OrderPriorityBadge } from "@/components/shared/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { EmptyState } from "@/components/shared/empty-state";
+import { QuickAction, RowActionsBar } from "@/components/shared/row-actions";
 
 export function ProductionList({
   jobs,
@@ -19,24 +21,28 @@ export function ProductionList({
 }) {
   if (jobs.length === 0) {
     return (
-      <div className="rounded-lg border bg-card p-8 text-center text-xs text-muted-foreground italic">
-        No production jobs found.
-      </div>
+      <EmptyState
+        icon={Factory}
+        title="No production jobs found"
+        description="Production jobs can be created from orders that need to be fulfilled."
+      />
     );
   }
 
   return (
-    <div className="rounded-lg border bg-card overflow-hidden">
+    <div className="rounded-lg border bg-card">
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Job #</TableHead>
             <TableHead>Order #</TableHead>
-            <TableHead>Customer</TableHead>
+            <TableHead className="hidden md:table-cell">Customer</TableHead>
             <TableHead>Item Name</TableHead>
-            <TableHead>Priority</TableHead>
+            <TableHead className="hidden lg:table-cell">Assigned To</TableHead>
+            <TableHead className="hidden md:table-cell">Priority</TableHead>
             <TableHead>Stage</TableHead>
-            <TableHead>Expected Due</TableHead>
+            <TableHead className="hidden lg:table-cell">Expected Due</TableHead>
+            <TableHead className="w-10" />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -52,16 +58,26 @@ export function ProductionList({
                   {job.order.number}
                 </Link>
               </TableCell>
-              <TableCell className="text-xs font-medium">{job.order.customer.name}</TableCell>
-              <TableCell className="text-xs font-semibold">{job.itemName}</TableCell>
-              <TableCell>
+              <TableCell className="hidden text-xs font-medium md:table-cell">{job.order.customer.name}</TableCell>
+              <TableCell className="text-xs font-semibold">
+                {job.itemName} <span className="text-muted-foreground font-normal">× {job.quantity}</span>
+              </TableCell>
+              <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">
+                {job.assignedTo ? job.assignedTo.name : "Unassigned"}
+              </TableCell>
+              <TableCell className="hidden md:table-cell">
                 <OrderPriorityBadge priority={job.priority} />
               </TableCell>
               <TableCell>
                 <ProductionStatusBadge status={job.status} />
               </TableCell>
-              <TableCell className="text-xs">
+              <TableCell className="hidden text-xs lg:table-cell">
                 {job.expectedCompletionDate ? format(new Date(job.expectedCompletionDate), "d MMM yyyy") : "—"}
+              </TableCell>
+              <TableCell>
+                <RowActionsBar>
+                  <QuickAction icon={Eye} label="View" href={`/production/${job.id}`} />
+                </RowActionsBar>
               </TableCell>
             </TableRow>
           ))}
@@ -70,4 +86,3 @@ export function ProductionList({
     </div>
   );
 }
-

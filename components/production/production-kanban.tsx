@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
-import { Factory, CheckCircle2, Clock } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock, User } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { updateProductionJobStatusAction } from "@/lib/actions/production";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -16,7 +16,12 @@ const STAGES: Array<{ key: ProductionStatus; label: string; color: string }> = [
   { key: "IN_PROGRESS", label: "In Printing", color: "bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-300" },
   { key: "QUALITY_CHECK", label: "Quality Check", color: "bg-purple-500/10 border-purple-500/30 text-purple-700 dark:text-purple-300" },
   { key: "COMPLETED", label: "Completed (Ready)", color: "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300" },
+  { key: "ON_HOLD", label: "On Hold", color: "bg-destructive/10 border-destructive/30 text-destructive" },
 ];
+
+// Linear Prev/Next only walks the main pipeline — ON_HOLD is a side state
+// jumped to/from via the status select, not part of the forward sequence.
+const PIPELINE: ProductionStatus[] = ["PENDING", "ASSIGNED", "IN_PROGRESS", "QUALITY_CHECK", "COMPLETED"];
 
 export function ProductionKanban({ initialJobs }: { initialJobs: any[] }) {
   const router = useRouter();
@@ -32,9 +37,10 @@ export function ProductionKanban({ initialJobs }: { initialJobs: any[] }) {
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 overflow-x-auto pb-4">
+    <div className="grid grid-cols-1 gap-4 overflow-x-auto pb-4 md:grid-cols-6">
       {STAGES.map((stage) => {
         const stageJobs = initialJobs.filter((j) => j.status === stage.key);
+        const pipelineIdx = PIPELINE.indexOf(stage.key);
         return (
           <div key={stage.key} className="space-y-3 min-w-[220px]">
             <div className={`p-2.5 rounded-lg border font-semibold text-xs flex items-center justify-between ${stage.color}`}>
@@ -59,8 +65,15 @@ export function ProductionKanban({ initialJobs }: { initialJobs: any[] }) {
                       <span className="text-[11px] text-muted-foreground font-mono">{job.order.number}</span>
                     </div>
 
-                    <p className="font-semibold text-foreground line-clamp-2">{job.itemName}</p>
+                    <p className="font-semibold text-foreground line-clamp-2">
+                      {job.itemName} <span className="text-muted-foreground font-normal">× {job.quantity}</span>
+                    </p>
                     <p className="text-muted-foreground text-[11px]">Customer: {job.order.customer.name}</p>
+
+                    <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <User className="size-3" />
+                      <span>{job.assignedTo ? job.assignedTo.name : "Unassigned"}</span>
+                    </div>
 
                     {job.expectedCompletionDate && (
                       <div className="flex items-center gap-1 text-[11px] text-muted-foreground pt-1 border-t">
@@ -69,28 +82,41 @@ export function ProductionKanban({ initialJobs }: { initialJobs: any[] }) {
                       </div>
                     )}
 
-                    <div className="pt-2 flex items-center justify-between text-[11px]">
-                      {stage.key !== "PENDING" && (
-                        <button
-                          onClick={() => {
-                            const prevIdx = STAGES.findIndex((s) => s.key === stage.key) - 1;
-                            if (prevIdx >= 0) handleMoveStage(job.id, STAGES[prevIdx].key);
-                          }}
-                          className="text-muted-foreground hover:text-foreground"
-                        >
-                          ← Prev
-                        </button>
-                      )}
-                      {stage.key !== "COMPLETED" && (
-                        <button
-                          onClick={() => {
-                            const nextIdx = STAGES.findIndex((s) => s.key === stage.key) + 1;
-                            if (nextIdx < STAGES.length) handleMoveStage(job.id, STAGES[nextIdx].key);
-                          }}
-                          className="text-primary font-semibold hover:underline ml-auto"
-                        >
-                          Next →
-                        </button>
+                    <div className="pt-2 border-t space-y-2">
+                      <Select value={job.status} onValueChange={(v) => handleMoveStage(job.id, v as ProductionStatus)}>
+                        <SelectTrigger className="h-7 text-[11px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {STAGES.map((s) => (
+                            <SelectItem key={s.key} value={s.key} className="text-xs">
+                              {s.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      {pipelineIdx >= 0 && (
+                        <div className="flex items-center justify-between text-[11px]">
+                          {pipelineIdx > 0 ? (
+                            <button
+                              onClick={() => handleMoveStage(job.id, PIPELINE[pipelineIdx - 1])}
+                              className="flex items-center gap-0.5 text-muted-foreground hover:text-foreground"
+                            >
+                              <ChevronLeft className="size-3.5" /> Prev
+                            </button>
+                          ) : (
+                            <span />
+                          )}
+                          {pipelineIdx < PIPELINE.length - 1 && (
+                            <button
+                              onClick={() => handleMoveStage(job.id, PIPELINE[pipelineIdx + 1])}
+                              className="flex items-center gap-0.5 text-primary font-semibold hover:underline ml-auto"
+                            >
+                              Next <ChevronRight className="size-3.5" />
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
                   </Card>
@@ -103,4 +129,3 @@ export function ProductionKanban({ initialJobs }: { initialJobs: any[] }) {
     </div>
   );
 }
-

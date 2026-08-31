@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/services/activity";
 import type { NoteFormValues } from "@/lib/validations/note";
-import type { Prisma } from "@prisma/client";
+import type { Prisma, Note } from "@prisma/client";
 
 const PAGE_SIZE = 12;
 
@@ -70,7 +70,7 @@ export async function getNoteDetail(id: string) {
   }
 }
 
-export function noteToFormValues(note: any): NoteFormValues {
+export function noteToFormValues(note: Note): NoteFormValues {
   return {
     title: note.title,
     content: note.content,

@@ -1,35 +1,88 @@
 "use client";
 
 import { useState } from "react";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay } from "date-fns";
-import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { format, eachDayOfInterval, isSameMonth, isSameDay, isToday } from "date-fns";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
+import { EventFormDialog, type CalendarEventEditTarget } from "@/components/calendar/event-form-dialog";
+import type { ComboboxCustomer } from "@/components/shared/customer-combobox";
+import type { CalendarItem } from "@/lib/services/calendar";
 
-export function CalendarView({ initialEvents = [] }: { initialEvents: any[] }) {
-  const [currentDate, setCurrentDate] = useState(new Date());
+const TYPE_STYLES: Record<CalendarItem["type"], string> = {
+  event: "bg-primary/10 hover:bg-primary/20 text-primary",
+  task: "bg-[color-mix(in_oklch,var(--chart-2),transparent_85%)] hover:bg-[color-mix(in_oklch,var(--chart-2),transparent_75%)] text-[var(--chart-2)]",
+  delivery: "bg-[color-mix(in_oklch,var(--chart-3),transparent_85%)] hover:bg-[color-mix(in_oklch,var(--chart-3),transparent_75%)] text-[var(--chart-3)]",
+  production: "bg-[color-mix(in_oklch,var(--chart-5),transparent_85%)] hover:bg-[color-mix(in_oklch,var(--chart-5),transparent_75%)] text-[var(--chart-5)]",
+  invoice: "bg-destructive/10 hover:bg-destructive/20 text-destructive",
+};
 
-  const monthStart = startOfMonth(currentDate);
-  const monthEnd = endOfMonth(currentDate);
-  const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
+const MAX_VISIBLE_PER_DAY = 3;
 
-  const prevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
-  const nextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+export function CalendarView({
+  events,
+  view,
+  currentDate,
+  rangeStart,
+  rangeEnd,
+  prevDate,
+  nextDate,
+  customers,
+  orders,
+  tasks,
+}: {
+  events: CalendarItem[];
+  view: "month" | "week";
+  currentDate: string;
+  rangeStart: string;
+  rangeEnd: string;
+  prevDate: string;
+  nextDate: string;
+  customers: ComboboxCustomer[];
+  orders: Array<{ id: string; number: string }>;
+  tasks: Array<{ id: string; title: string }>;
+}) {
+  const router = useRouter();
+  const [dialogTarget, setDialogTarget] = useState<{ defaultDate?: string; event?: CalendarEventEditTarget } | null>(null);
+
+  const current = new Date(currentDate);
+  const days = eachDayOfInterval({ start: new Date(rangeStart), end: new Date(rangeEnd) });
+
+  function navigate(dateIso: string, nextView: "month" | "week" = view) {
+    router.push(`/calendar?date=${dateIso.slice(0, 10)}&view=${nextView}`);
+  }
+
+  function openCreateDialog(date: Date) {
+    setDialogTarget({ defaultDate: format(date, "yyyy-MM-dd") });
+  }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-foreground">{format(currentDate, "MMMM yyyy")}</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-bold text-foreground">
+          {view === "month" ? format(current, "MMMM yyyy") : `Week of ${format(new Date(rangeStart), "d MMM yyyy")}`}
+        </h2>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={prevMonth}>
+          <Tabs value={view} onValueChange={(v) => navigate(currentDate, v as "month" | "week")}>
+            <TabsList variant="line">
+              <TabsTrigger value="month">Month</TabsTrigger>
+              <TabsTrigger value="week">Week</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <Button variant="outline" size="icon" onClick={() => navigate(prevDate)} aria-label="Previous">
             <ChevronLeft className="size-4" />
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setCurrentDate(new Date())}>
+          <Button variant="outline" size="sm" onClick={() => navigate(new Date().toISOString())}>
             Today
           </Button>
-          <Button variant="outline" size="icon" onClick={nextMonth}>
+          <Button variant="outline" size="icon" onClick={() => navigate(nextDate)} aria-label="Next">
             <ChevronRight className="size-4" />
+          </Button>
+          <Button size="sm" onClick={() => openCreateDialog(new Date())}>
+            <Plus className="size-4" /> Add Event
           </Button>
         </div>
       </div>
@@ -42,31 +95,72 @@ export function CalendarView({ initialEvents = [] }: { initialEvents: any[] }) {
         ))}
 
         {days.map((day) => {
-          const dayEvents = initialEvents.filter((e) => isSameDay(new Date(e.date), day));
+          const dayItems = events.filter((e) => isSameDay(new Date(e.date), day));
+          const visible = view === "week" ? dayItems : dayItems.slice(0, MAX_VISIBLE_PER_DAY);
+          const overflow = dayItems.length - visible.length;
+
           return (
             <div
               key={day.toISOString()}
-              className={`bg-card p-2 min-h-[100px] flex flex-col justify-between ${
-                !isSameMonth(day, currentDate) ? "opacity-40" : ""
-              }`}
+              className={cn(
+                "group relative bg-card p-2 flex flex-col justify-between",
+                view === "month" ? "min-h-[100px]" : "min-h-[220px]",
+                !isSameMonth(day, current) && view === "month" && "opacity-40"
+              )}
             >
-              <div className="font-semibold text-right text-muted-foreground">{format(day, "d")}</div>
+              <div className="flex items-center justify-between">
+                <span
+                  className={cn(
+                    "font-semibold text-muted-foreground",
+                    isToday(day) && "flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground"
+                  )}
+                >
+                  {format(day, "d")}
+                </span>
+                <button
+                  onClick={() => openCreateDialog(day)}
+                  className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
+                  aria-label="Add event on this day"
+                >
+                  <Plus className="size-3.5" />
+                </button>
+              </div>
               <div className="space-y-1 mt-1 flex-1">
-                {dayEvents.map((item) => (
+                {visible.map((item) => (
                   <Link
-                    key={item.id}
+                    key={`${item.type}-${item.id}`}
                     href={item.href}
-                    className="block p-1 rounded bg-primary/10 hover:bg-primary/20 text-primary text-[10px] truncate font-medium"
+                    className={cn("block p-1 rounded truncate font-medium", TYPE_STYLES[item.type])}
                   >
                     {item.title}
                   </Link>
                 ))}
+                {overflow > 0 && (
+                  <button
+                    onClick={() => openCreateDialog(day)}
+                    className="text-[10px] text-muted-foreground hover:text-foreground pl-1"
+                  >
+                    +{overflow} more
+                  </button>
+                )}
               </div>
             </div>
           );
         })}
       </div>
+
+      {dialogTarget && (
+        <EventFormDialog
+          key={dialogTarget.event?.id ?? dialogTarget.defaultDate ?? "new"}
+          open={Boolean(dialogTarget)}
+          onOpenChange={(open) => !open && setDialogTarget(null)}
+          customers={customers}
+          orders={orders}
+          tasks={tasks}
+          event={dialogTarget.event}
+          defaultDate={dialogTarget.defaultDate}
+        />
+      )}
     </div>
   );
 }
-

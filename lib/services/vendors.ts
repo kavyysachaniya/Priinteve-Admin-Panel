@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/services/activity";
 import type { VendorFormValues } from "@/lib/validations/vendor";
-import type { Prisma, VendorStatus } from "@prisma/client";
+import type { Prisma, Vendor, VendorStatus } from "@prisma/client";
 
 const PAGE_SIZE = 15;
 
@@ -10,6 +10,17 @@ export interface ListVendorsParams {
   status?: VendorStatus;
   page?: number;
 }
+
+export type VendorListItem = Prisma.VendorGetPayload<{
+  include: {
+    expenses: {
+      select: { totalAmountPaise: true; status: true };
+    };
+  };
+}> & {
+  totalExpensesPaise: number;
+  transactionCount: number;
+};
 
 export async function listVendors(params: ListVendorsParams) {
   try {
@@ -44,7 +55,7 @@ export async function listVendors(params: ListVendorsParams) {
       prisma.vendor.count({ where }),
     ]);
 
-    const vendorsWithTotals = vendors.map((v) => {
+    const vendorsWithTotals: VendorListItem[] = vendors.map((v) => {
       const recordedExpenses = v.expenses.filter((e) => e.status === "RECORDED");
       const totalExpensesPaise = recordedExpenses.reduce((sum, e) => sum + e.totalAmountPaise, 0);
       return {
@@ -109,7 +120,9 @@ export async function getVendorDetail(id: string) {
   }
 }
 
-export function vendorToFormValues(vendor: any): VendorFormValues {
+export type VendorDetail = NonNullable<Awaited<ReturnType<typeof getVendorDetail>>>;
+
+export function vendorToFormValues(vendor: Vendor): VendorFormValues {
   return {
     businessName: vendor.businessName,
     contactPerson: vendor.contactPerson ?? "",
@@ -185,4 +198,3 @@ export async function updateVendor(id: string, data: VendorFormValues) {
 export async function deleteVendor(id: string) {
   return prisma.vendor.delete({ where: { id } });
 }
-

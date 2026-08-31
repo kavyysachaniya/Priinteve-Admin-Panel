@@ -54,8 +54,15 @@ export const PERMISSIONS = {
   "vendors:view": "View vendors",
   "vendors:create": "Create vendors",
   "vendors:edit": "Edit vendors",
-  // Finance
+  // Finance & Accounting
   "finance:view": "View finance overview",
+  "accounting:view": "View chart of accounts and accounting",
+  "accounting:manage": "Manage chart of accounts and periods",
+  "journal:view": "View journal entries and ledger",
+  "journal:create": "Create and reverse journal entries",
+  "tax:view": "View tax reports and calculations",
+  "reports:view": "View financial statements and reports",
+  "statements:view": "View customer and vendor statements",
   // Tasks
   "tasks:view": "View tasks",
   "tasks:create": "Create tasks",
@@ -74,14 +81,6 @@ export const PERMISSIONS = {
   "settings:edit": "Edit settings",
   // Users
   "users:manage": "Manage users",
-  // Accounting & Reports
-  "accounting:view": "View accounting overview and balances",
-  "accounting:manage": "Manage chart of accounts and periods",
-  "journal:view": "View journal entries and ledger",
-  "journal:create": "Create manual journal entries and reversals",
-  "tax:view": "View GST and tax reports",
-  "reports:view": "View Profit & Loss, Balance Sheet, Cash Flow",
-  "statements:view": "View customer and vendor statements",
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;

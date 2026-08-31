@@ -61,7 +61,7 @@ export async function logActivity(
 
   try {
     return await client.activityLog.create({ data });
-  } catch (err) {
+  } catch {
     // If transaction client was closed or expired, log using global prisma client safely
     try {
       return await prisma.activityLog.create({ data });

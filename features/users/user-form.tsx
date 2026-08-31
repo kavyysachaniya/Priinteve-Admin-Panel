@@ -32,12 +32,12 @@ export function UserForm({ defaultValues, onSubmit, submitLabel = "Create User",
       status: "ACTIVE",
       password: "",
       ...defaultValues,
-    } as any,
+    },
   });
 
-  function handleSubmit(values: any) {
+  function handleSubmit(values: UserFormValues) {
     startTransition(async () => {
-      const result = await onSubmit(values as UserFormValues);
+      const result = await onSubmit(values);
       if (!result.success) {
         toast.error(result.message ?? "Failed to save user.");
         if (result.fieldErrors) {

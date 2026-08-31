@@ -14,7 +14,9 @@ const createAccountSchema = z.object({
   openingBalance: z.coerce.number().min(0, "Opening balance cannot be negative"),
 });
 
-export async function createAccountAction(values: any): Promise<FormActionResult> {
+export type CreateAccountInput = z.infer<typeof createAccountSchema>;
+
+export async function createAccountAction(values: unknown): Promise<FormActionResult> {
   await requirePermission("accounting:manage");
   const parsed = createAccountSchema.safeParse(values);
   if (!parsed.success) {

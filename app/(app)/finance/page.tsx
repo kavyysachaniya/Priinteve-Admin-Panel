@@ -1,5 +1,18 @@
 import Link from "next/link";
-import { IndianRupee, TrendingUp, Wallet, Receipt, Landmark, Scale, Percent } from "lucide-react";
+import {
+  IndianRupee,
+  TrendingUp,
+  Wallet,
+  Receipt,
+  Landmark,
+  Scale,
+  Percent,
+  AlertTriangle,
+  PenLine,
+  BookOpen,
+  Calculator,
+  CalendarDays,
+} from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { listAccounts, getCashBankAccounts } from "@/lib/services/accounting/accounts";
@@ -96,8 +109,9 @@ export default async function FinancePage() {
           </div>
           <p className="text-lg font-bold text-foreground">{formatCurrency(totalReceivables)}</p>
           {overdueInvoicesCount > 0 && (
-            <p className="text-[10px] text-red-500 font-semibold">
-              ⚠️ {formatCurrency(overdueAmount)} is overdue across {overdueInvoicesCount} invoices
+            <p className="flex items-center gap-1 text-[10px] text-red-500 font-semibold">
+              <AlertTriangle className="size-3" />
+              {formatCurrency(overdueAmount)} is overdue across {overdueInvoicesCount} invoices
             </p>
           )}
         </Card>
@@ -186,16 +200,24 @@ export default async function FinancePage() {
           </div>
           <div className="flex flex-col gap-2">
             <Button asChild variant="outline" size="sm" className="w-full justify-start text-xs">
-              <Link href="/accounting/journal/new">✍️ New Manual Journal Entry</Link>
+              <Link href="/accounting/journal/new">
+                <PenLine className="size-3.5" /> New Manual Journal Entry
+              </Link>
             </Button>
             <Button asChild variant="outline" size="sm" className="w-full justify-start text-xs">
-              <Link href="/accounting/ledger">📖 View General Ledger</Link>
+              <Link href="/accounting/ledger">
+                <BookOpen className="size-3.5" /> View General Ledger
+              </Link>
             </Button>
             <Button asChild variant="outline" size="sm" className="w-full justify-start text-xs">
-              <Link href="/accounts">🧮 View Chart of Accounts</Link>
+              <Link href="/accounts">
+                <Calculator className="size-3.5" /> View Chart of Accounts
+              </Link>
             </Button>
             <Button asChild variant="outline" size="sm" className="w-full justify-start text-xs">
-              <Link href="/accounting/periods">📅 View Accounting Periods</Link>
+              <Link href="/accounting/periods">
+                <CalendarDays className="size-3.5" /> View Accounting Periods
+              </Link>
             </Button>
           </div>
         </div>

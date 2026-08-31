@@ -61,12 +61,13 @@ export function NoteList({
               </Link>
               <button
                 onClick={() => handleTogglePin(note.id)}
+                aria-label={note.pinned ? "Unpin note" : "Pin note"}
                 title={note.pinned ? "Unpin note" : "Pin note"}
-                className={`p-1 rounded transition-colors ${
+                className={`flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
                   note.pinned ? "text-amber-600 bg-amber-500/20" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                <Pin className="size-3.5" />
+                <Pin className="size-4" />
               </button>
             </div>
 
@@ -86,10 +87,10 @@ export function NoteList({
             <div className="flex items-center justify-between text-muted-foreground">
               <span>{format(new Date(note.createdAt), "d MMM yyyy")}</span>
 
-              <div className="flex items-center gap-1">
-                <Button asChild variant="ghost" size="icon" className="size-6">
-                  <Link href={`/notes/${note.id}/edit`}>
-                    <Edit className="size-3 text-muted-foreground" />
+              <div className="flex items-center gap-0.5">
+                <Button asChild variant="ghost" size="icon" className="size-8">
+                  <Link href={`/notes/${note.id}/edit`} aria-label="Edit">
+                    <Edit className="size-4 text-muted-foreground" />
                   </Link>
                 </Button>
 
@@ -102,8 +103,8 @@ export function NoteList({
                     return res;
                   }}
                   trigger={
-                    <Button variant="ghost" size="icon" className="size-6 text-destructive">
-                      <Trash2 className="size-3" />
+                    <Button variant="ghost" size="icon" className="size-8 text-destructive" aria-label="Delete">
+                      <Trash2 className="size-4" />
                     </Button>
                   }
                 />

@@ -2,21 +2,27 @@
 
 import Link from "next/link";
 import { format } from "date-fns";
-import { CheckSquare, Calendar } from "lucide-react";
+import { CheckSquare, Eye, Pencil } from "lucide-react";
 import { TaskStatusBadge, TaskPriorityBadge } from "@/components/shared/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { EmptyState } from "@/components/shared/empty-state";
+import { QuickAction, RowActions, RowActionsBar } from "@/components/shared/row-actions";
+import { DeleteTaskItem } from "@/components/tasks/delete-task-item";
 import { toggleTaskStatusAction } from "@/lib/actions/tasks";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import type { TaskListItem } from "@/lib/services/tasks";
 
-export function TaskList({ tasks }: { tasks: any[] }) {
+export function TaskList({ tasks }: { tasks: TaskListItem[] }) {
   const router = useRouter();
 
   if (tasks.length === 0) {
     return (
-      <div className="rounded-lg border bg-card p-8 text-center text-xs text-muted-foreground italic">
-        No tasks found.
-      </div>
+      <EmptyState
+        icon={CheckSquare}
+        title="No tasks found"
+        description="Create to-dos, follow-ups, and delivery action items to track them here."
+      />
     );
   }
 
@@ -31,17 +37,18 @@ export function TaskList({ tasks }: { tasks: any[] }) {
   };
 
   return (
-    <div className="rounded-lg border bg-card overflow-hidden">
+    <div className="rounded-lg border bg-card">
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead className="w-10"></TableHead>
             <TableHead>Task Title</TableHead>
-            <TableHead>Priority</TableHead>
+            <TableHead className="hidden md:table-cell">Priority</TableHead>
             <TableHead>Status</TableHead>
-            <TableHead>Due Date</TableHead>
-            <TableHead>Assigned To</TableHead>
-            <TableHead>Related Entity</TableHead>
+            <TableHead className="hidden md:table-cell">Due Date</TableHead>
+            <TableHead className="hidden lg:table-cell">Assigned To</TableHead>
+            <TableHead className="hidden xl:table-cell">Related Entity</TableHead>
+            <TableHead className="w-10" />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -63,23 +70,23 @@ export function TaskList({ tasks }: { tasks: any[] }) {
                   {task.title}
                 </Link>
               </TableCell>
-              <TableCell>
+              <TableCell className="hidden md:table-cell">
                 <TaskPriorityBadge priority={task.priority} />
               </TableCell>
               <TableCell>
                 <TaskStatusBadge status={task.status} />
               </TableCell>
-              <TableCell className="text-xs">
+              <TableCell className="hidden text-xs md:table-cell">
                 {task.dueDate ? (
                   <span>{format(new Date(task.dueDate), "d MMM yyyy")} {task.dueTime ? `(${task.dueTime})` : ""}</span>
                 ) : (
                   "—"
                 )}
               </TableCell>
-              <TableCell className="text-xs text-muted-foreground">
+              <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">
                 {task.assignedTo ? task.assignedTo.name : "Unassigned"}
               </TableCell>
-              <TableCell className="text-xs">
+              <TableCell className="hidden text-xs xl:table-cell">
                 {task.customer && (
                   <Link href={`/customers/${task.customer.id}`} className="text-primary hover:underline font-medium">
                     {task.customer.name}
@@ -91,6 +98,15 @@ export function TaskList({ tasks }: { tasks: any[] }) {
                   </Link>
                 )}
               </TableCell>
+              <TableCell>
+                <RowActionsBar>
+                  <QuickAction icon={Eye} label="View" href={`/tasks/${task.id}`} />
+                  <QuickAction icon={Pencil} label="Edit" href={`/tasks/${task.id}/edit`} />
+                  <RowActions>
+                    <DeleteTaskItem taskId={task.id} taskTitle={task.title} />
+                  </RowActions>
+                </RowActionsBar>
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -98,4 +114,3 @@ export function TaskList({ tasks }: { tasks: any[] }) {
     </div>
   );
 }
-

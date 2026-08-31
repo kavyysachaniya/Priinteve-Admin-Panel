@@ -2,17 +2,17 @@
 
 import Link from "next/link";
 import { format } from "date-fns";
-import { CheckSquare, Calendar, User, Edit, Trash2, CheckCircle2 } from "lucide-react";
+import { Edit, Trash2, CheckCircle2 } from "lucide-react";
 import { TaskStatusBadge, TaskPriorityBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ActivityTimeline } from "@/components/shared/activity-timeline";
 import { toggleTaskStatusAction, deleteTaskAction } from "@/lib/actions/tasks";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import type { TaskDetail as TaskDetailType } from "@/lib/services/tasks";
 
-export function TaskDetail({ task }: { task: any }) {
+export function TaskDetail({ task }: { task: TaskDetailType }) {
   const router = useRouter();
 
   const handleToggleTask = async () => {
@@ -113,4 +113,3 @@ export function TaskDetail({ task }: { task: any }) {
     </div>
   );
 }
-

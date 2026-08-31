@@ -6,7 +6,19 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { UserPlus, Users } from "lucide-react";
+import { UserPlus, Users, Eye, Pencil } from "lucide-react";
+import { EmptyState } from "@/components/shared/empty-state";
+import { QuickAction, RowActions, RowActionsBar } from "@/components/shared/row-actions";
+import { UserStatusItem } from "@/components/users/user-status-item";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Users" };
@@ -14,56 +26,77 @@ export const metadata = { title: "Users" };
 async function UserList() {
   const users = await listUsers();
 
+  if (users.length === 0) {
+    return (
+      <EmptyState
+        icon={Users}
+        title="No users found"
+        description="Add a team member to give them access to Priinteve."
+      />
+    );
+  }
+
   return (
-    <div className="rounded-xl border bg-card overflow-hidden">
-      <table className="w-full text-sm">
-        <thead className="bg-muted/40 border-b">
-          <tr>
-            <th className="text-left px-4 py-3 font-medium text-muted-foreground">Name</th>
-            <th className="text-left px-4 py-3 font-medium text-muted-foreground">Email</th>
-            <th className="text-left px-4 py-3 font-medium text-muted-foreground">Role</th>
-            <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
-            <th className="text-left px-4 py-3 font-medium text-muted-foreground">Last Login</th>
-            <th className="text-left px-4 py-3 font-medium text-muted-foreground">Created</th>
-            <th className="px-4 py-3" />
-          </tr>
-        </thead>
-        <tbody className="divide-y">
+    <div className="rounded-lg border bg-card">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead className="hidden xl:table-cell">Email</TableHead>
+            <TableHead>Role</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead className="hidden lg:table-cell">Last Login</TableHead>
+            <TableHead className="hidden md:table-cell">Created</TableHead>
+            <TableHead className="w-10" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {users.map((user) => (
-            <tr key={user.id} className="hover:bg-muted/20 transition-colors">
-              <td className="px-4 py-3 font-medium">{user.name}</td>
-              <td className="px-4 py-3 text-muted-foreground">{user.email}</td>
-              <td className="px-4 py-3">
+            <TableRow key={user.id}>
+              <TableCell className="font-medium">{user.name}</TableCell>
+              <TableCell className="hidden text-muted-foreground xl:table-cell">{user.email}</TableCell>
+              <TableCell>
                 <Badge variant={user.role === "ADMIN" ? "default" : "secondary"}>
                   {user.role}
                 </Badge>
-              </td>
-              <td className="px-4 py-3">
-                <Badge variant={user.status === "ACTIVE" ? "outline" : "destructive"} className={user.status === "ACTIVE" ? "text-green-600 border-green-300" : ""}>
+              </TableCell>
+              <TableCell>
+                <Badge
+                  variant={user.status === "ACTIVE" ? "outline" : "destructive"}
+                  className={user.status === "ACTIVE" ? "text-success border-success/40" : ""}
+                >
                   {user.status}
                 </Badge>
-              </td>
-              <td className="px-4 py-3 text-muted-foreground">
+              </TableCell>
+              <TableCell className="hidden text-muted-foreground lg:table-cell">
                 {user.lastLoginAt ? format(new Date(user.lastLoginAt), "dd MMM yyyy, HH:mm") : "Never"}
-              </td>
-              <td className="px-4 py-3 text-muted-foreground">
+              </TableCell>
+              <TableCell className="hidden text-muted-foreground md:table-cell">
                 {format(new Date(user.createdAt), "dd MMM yyyy")}
-              </td>
-              <td className="px-4 py-3 text-right">
-                <Button variant="ghost" size="sm" asChild>
-                  <Link href={`/users/${user.id}`}>View</Link>
-                </Button>
-              </td>
-            </tr>
+              </TableCell>
+              <TableCell>
+                <RowActionsBar>
+                  <QuickAction icon={Eye} label="View" href={`/users/${user.id}`} />
+                  <QuickAction icon={Pencil} label="Edit" href={`/users/${user.id}/edit`} />
+                  <RowActions>
+                    <UserStatusItem userId={user.id} userName={user.name} status={user.status} />
+                  </RowActions>
+                </RowActionsBar>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
-      {users.length === 0 && (
-        <div className="py-16 text-center text-muted-foreground">
-          <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
-          <p>No users found.</p>
-        </div>
-      )}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function UserListSkeleton() {
+  return (
+    <div className="rounded-lg border bg-card p-4 space-y-3">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <Skeleton key={i} className="h-10 w-full" />
+      ))}
     </div>
   );
 }
@@ -84,12 +117,12 @@ export default async function UsersPage() {
         </div>
         <Button asChild>
           <Link href="/users/new">
-            <UserPlus className="w-4 h-4 mr-2" />
+            <UserPlus className="size-4" />
             Add User
           </Link>
         </Button>
       </div>
-      <Suspense fallback={<div className="h-48 rounded-xl border bg-muted animate-pulse" />}>
+      <Suspense fallback={<UserListSkeleton />}>
         <UserList />
       </Suspense>
     </div>

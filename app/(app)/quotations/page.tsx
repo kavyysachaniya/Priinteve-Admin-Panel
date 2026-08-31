@@ -1,14 +1,18 @@
 export const dynamic = "force-dynamic";
 import Link from "next/link";
-import { Plus, FileText } from "lucide-react";
+import { Plus, FileText, Eye, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { TableToolbar } from "@/components/shared/table-toolbar";
 import { TableFilterSelect } from "@/components/shared/table-filter-select";
 import { TablePagination } from "@/components/shared/table-pagination";
 import { QuotationStatusBadge } from "@/components/shared/status-badge";
+import { QuickAction, RowActions, RowActionsBar } from "@/components/shared/row-actions";
+import { QuotationRowActions } from "@/components/quotations/quotation-row-actions";
+import { DeleteQuotationItem } from "@/components/quotations/delete-quotation-item";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { listQuotations } from "@/lib/services/quotations";
 import { formatCurrency } from "@/lib/money";
 import { formatDate } from "@/lib/format";
@@ -77,40 +81,52 @@ export default async function QuotationsPage({ searchParams }: PageProps<"/quota
             }
           />
         ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Number</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Issue Date</TableHead>
-                  <TableHead>Valid Until</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead>Status</TableHead>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Number</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead className="hidden md:table-cell">Issue Date</TableHead>
+                <TableHead className="hidden lg:table-cell">Valid Until</TableHead>
+                <TableHead className="text-right">Total</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="w-10" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {quotations.map((q) => (
+                <TableRow key={q.id}>
+                  <TableCell>
+                    <Link href={`/quotations/${q.id}`} className="font-medium text-primary hover:underline">
+                      {q.number}
+                    </Link>
+                  </TableCell>
+                  <TableCell>
+                    <Link href={`/customers/${q.customer.id}`} className="hover:underline">
+                      {q.customer.name}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="hidden text-sm text-muted-foreground md:table-cell">{formatDate(q.issueDate)}</TableCell>
+                  <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">{formatDate(q.validUntil)}</TableCell>
+                  <TableCell className="text-right text-sm font-medium">{formatCurrency(q.totalPaise)}</TableCell>
+                  <TableCell><QuotationStatusBadge status={q.status} /></TableCell>
+                  <TableCell>
+                    <RowActionsBar>
+                      <QuickAction icon={Eye} label="View" href={`/quotations/${q.id}`} />
+                      {q.status !== "CONVERTED" && (
+                        <QuickAction icon={Pencil} label="Edit" href={`/quotations/${q.id}/edit`} />
+                      )}
+                      <RowActions>
+                        <QuotationRowActions id={q.id} status={q.status} />
+                        {q.status === "DRAFT" && <DropdownMenuSeparator />}
+                        <DeleteQuotationItem id={q.id} number={q.number} status={q.status} />
+                      </RowActions>
+                    </RowActionsBar>
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {quotations.map((q) => (
-                  <TableRow key={q.id}>
-                    <TableCell>
-                      <Link href={`/quotations/${q.id}`} className="font-medium text-primary hover:underline">
-                        {q.number}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      <Link href={`/customers/${q.customer.id}`} className="hover:underline">
-                        {q.customer.name}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{formatDate(q.issueDate)}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{formatDate(q.validUntil)}</TableCell>
-                    <TableCell className="text-right text-sm font-medium">{formatCurrency(q.totalPaise)}</TableCell>
-                    <TableCell><QuotationStatusBadge status={q.status} /></TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+              ))}
+            </TableBody>
+          </Table>
         )}
 
         <TablePagination page={page} pageSize={pageSize} total={total} />

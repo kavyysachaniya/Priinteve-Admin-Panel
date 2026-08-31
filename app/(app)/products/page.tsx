@@ -6,13 +6,12 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { TableToolbar } from "@/components/shared/table-toolbar";
 import { TableFilterSelect } from "@/components/shared/table-filter-select";
 import { TablePagination } from "@/components/shared/table-pagination";
-import { RowActions } from "@/components/shared/row-actions";
+import { QuickAction, RowActions, RowActionsBar } from "@/components/shared/row-actions";
 import { ProductStatusBadge } from "@/components/shared/status-badge";
 import { DeleteProductItem } from "@/components/products/delete-product-item";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { listProducts } from "@/lib/services/products";
 import { formatCurrency } from "@/lib/money";
 import type { ProductStatus, ProductType } from "@prisma/client";
@@ -85,55 +84,50 @@ export default async function ProductsPage({ searchParams }: PageProps<"/product
             }
           />
         ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead className="text-right">Selling Price</TableHead>
-                  <TableHead className="text-right">GST</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="w-10" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {products.map((product) => (
-                  <TableRow key={product.id}>
-                    <TableCell>
-                      <p className="font-medium">{product.name}</p>
-                      {product.sku && <p className="text-xs text-muted-foreground">SKU: {product.sku}</p>}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="font-normal">
-                        {product.type === "PRODUCT" ? "Product" : "Service"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{product.category?.name ?? "—"}</TableCell>
-                    <TableCell className="text-right text-sm font-medium">
-                      {formatCurrency(product.sellingPricePaise)} <span className="text-xs text-muted-foreground">/ {product.unit}</span>
-                    </TableCell>
-                    <TableCell className="text-right text-sm text-muted-foreground">{product.gstRate}%</TableCell>
-                    <TableCell>
-                      <ProductStatusBadge status={product.status} />
-                    </TableCell>
-                    <TableCell>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead className="hidden md:table-cell">Type</TableHead>
+                <TableHead className="hidden lg:table-cell">Category</TableHead>
+                <TableHead className="text-right">Selling Price</TableHead>
+                <TableHead className="hidden text-right xl:table-cell">GST</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="w-10" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {products.map((product) => (
+                <TableRow key={product.id}>
+                  <TableCell>
+                    <p className="font-medium">{product.name}</p>
+                    {product.sku && <p className="text-xs text-muted-foreground">SKU: {product.sku}</p>}
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    <Badge variant="outline" className="font-normal">
+                      {product.type === "PRODUCT" ? "Product" : "Service"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">{product.category?.name ?? "—"}</TableCell>
+                  <TableCell className="text-right text-sm font-medium">
+                    {formatCurrency(product.sellingPricePaise)} <span className="text-xs text-muted-foreground">/ {product.unit}</span>
+                  </TableCell>
+                  <TableCell className="hidden text-right text-sm text-muted-foreground xl:table-cell">{product.gstRate}%</TableCell>
+                  <TableCell>
+                    <ProductStatusBadge status={product.status} />
+                  </TableCell>
+                  <TableCell>
+                    <RowActionsBar>
+                      <QuickAction icon={Pencil} label="Edit" href={`/products/${product.id}/edit`} />
                       <RowActions>
-                        <DropdownMenuItem asChild>
-                          <Link href={`/products/${product.id}/edit`}>
-                            <Pencil className="size-4" /> Edit
-                          </Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
                         <DeleteProductItem productId={product.id} productName={product.name} />
                       </RowActions>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                    </RowActionsBar>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
 
         <TablePagination page={page} pageSize={pageSize} total={total} />

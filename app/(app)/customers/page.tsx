@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { TableToolbar } from "@/components/shared/table-toolbar";
 import { TableFilterSelect } from "@/components/shared/table-filter-select";
 import { TablePagination } from "@/components/shared/table-pagination";
-import { RowActions } from "@/components/shared/row-actions";
+import { QuickAction, RowActions, RowActionsBar } from "@/components/shared/row-actions";
 import { CustomerStatusBadge } from "@/components/shared/status-badge";
 import { DeleteCustomerItem } from "@/components/customers/delete-customer-item";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { listCustomers } from "@/lib/services/customers";
 import { formatCurrency } from "@/lib/money";
 import { formatDate, initials } from "@/lib/format";
@@ -91,7 +90,6 @@ export default async function CustomersPage({
               <TableRow>
                 <TableHead>Customer</TableHead>
                 <TableHead className="hidden md:table-cell">Phone</TableHead>
-                <TableHead className="hidden xl:table-cell">Email</TableHead>
                 <TableHead className="text-right">Total Business</TableHead>
                 <TableHead className="text-right">Outstanding</TableHead>
                 <TableHead className="hidden lg:table-cell">Last Transaction</TableHead>
@@ -120,9 +118,6 @@ export default async function CustomersPage({
                     </Link>
                   </TableCell>
                   <TableCell className="hidden text-sm md:table-cell">{customer.phone}</TableCell>
-                  <TableCell className="hidden max-w-[200px] truncate text-sm text-muted-foreground xl:table-cell" title={customer.email || undefined}>
-                    {customer.email || "—"}
-                  </TableCell>
                   <TableCell className="text-right text-sm font-medium">
                     {formatCurrency(customer.totalBusinessPaise)}
                   </TableCell>
@@ -142,20 +137,13 @@ export default async function CustomersPage({
                     <CustomerStatusBadge status={customer.status} />
                   </TableCell>
                   <TableCell>
-                    <RowActions>
-                      <DropdownMenuItem asChild>
-                        <Link href={`/customers/${customer.id}`}>
-                          <Eye className="size-4" /> View
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href={`/customers/${customer.id}/edit`}>
-                          <Pencil className="size-4" /> Edit
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DeleteCustomerItem customerId={customer.id} customerName={customer.name} />
-                    </RowActions>
+                    <RowActionsBar>
+                      <QuickAction icon={Eye} label="View" href={`/customers/${customer.id}`} />
+                      <QuickAction icon={Pencil} label="Edit" href={`/customers/${customer.id}/edit`} />
+                      <RowActions>
+                        <DeleteCustomerItem customerId={customer.id} customerName={customer.name} />
+                      </RowActions>
+                    </RowActionsBar>
                   </TableCell>
                 </TableRow>
               ))}

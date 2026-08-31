@@ -20,7 +20,9 @@ const createJournalSchema = z.object({
   lines: z.array(journalLineSchema).min(2, "At least 2 lines are required"),
 });
 
-export async function createJournalEntryAction(values: any): Promise<FormActionResult> {
+export type CreateJournalInput = z.infer<typeof createJournalSchema>;
+
+export async function createJournalEntryAction(values: unknown): Promise<FormActionResult> {
   const user = await requirePermission("journal:create");
   const parsed = createJournalSchema.safeParse(values);
   if (!parsed.success) {

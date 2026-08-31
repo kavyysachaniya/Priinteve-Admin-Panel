@@ -185,8 +185,8 @@ export default async function TaxPage(props: { searchParams: Promise<SearchParam
       </form>
 
       {/* Disclaimer Box */}
-      <div className="flex items-start gap-2.5 p-3.5 rounded border border-amber-200 bg-amber-50 text-amber-900 text-xs no-print">
-        <AlertCircle className="size-5 shrink-0 text-amber-600" />
+      <div className="flex items-start gap-2.5 p-3.5 rounded border border-warning/30 bg-warning/10 text-warning-foreground text-xs no-print dark:text-warning">
+        <AlertCircle className="size-5 shrink-0 text-warning" />
         <div>
           <span className="font-bold">Disclaimer: Management Reporting Tool Only.</span> This module computes tax values based purely on internal invoice and expense records for managerial reconciliation and cash planning. It does not constitute a legally compliant GST return filing form. Consult your chartered accountant for tax filings.
         </div>
@@ -225,9 +225,9 @@ export default async function TaxPage(props: { searchParams: Promise<SearchParam
               <div className="flex justify-between"><span>IGST (Inter)</span><span>{formatCurrency(totalIGSTInput)}</span></div>
             </div>
           </div>
-          <div className={`border rounded p-4 ${report.netGstPayablePaise >= 0 ? "bg-red-50/20 border-red-200" : "bg-emerald-50/20 border-emerald-200"}`}>
+          <div className={`border rounded p-4 ${report.netGstPayablePaise >= 0 ? "bg-destructive/10 border-destructive/30" : "bg-success/10 border-success/30"}`}>
             <span className="text-[10px] font-sans text-muted-foreground block uppercase">Net GST Position</span>
-            <span className={`text-base font-bold ${report.netGstPayablePaise >= 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+            <span className={`text-base font-bold ${report.netGstPayablePaise >= 0 ? "text-destructive" : "text-success"}`}>
               {formatCurrency(Math.abs(report.netGstPayablePaise))}
             </span>
             <span className="block text-[10px] text-muted-foreground font-sans mt-0.5">
