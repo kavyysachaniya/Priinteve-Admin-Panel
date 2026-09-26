@@ -76,6 +76,12 @@ export const PERMISSIONS = {
   // Calendar
   "calendar:view": "View calendar",
   "calendar:create": "Create calendar events",
+  // Projects
+  "projects:view": "View projects",
+  "projects:create": "Create projects",
+  "projects:edit": "Edit projects",
+  "projects:delete": "Delete projects",
+  "projects:timer": "Control project timer",
   // Settings
   "settings:view": "View settings",
   "settings:edit": "Edit settings",
@@ -121,6 +127,10 @@ const EMPLOYEE_PERMISSIONS: Permission[] = [
   "notes:delete",
   "calendar:view",
   "calendar:create",
+  "projects:view",
+  "projects:create",
+  "projects:edit",
+  "projects:timer",
 ];
 
 export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {

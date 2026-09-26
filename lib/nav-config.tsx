@@ -21,6 +21,7 @@ import {
   Store,
   Settings,
   UserCheck,
+  FolderKanban,
   type LucideIcon,
 } from "lucide-react";
 import type { Permission } from "@/lib/auth/permissions";
@@ -42,7 +43,10 @@ export interface NavSection {
 export const NAV_SECTIONS: NavSection[] = [
   {
     label: null,
-    items: [{ label: "Dashboard", href: "/dashboard", icon: LayoutDashboard }],
+    items: [
+      { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+      { label: "Projects", href: "/projects", icon: FolderKanban, requiredPermission: "projects:view" },
+    ],
   },
   {
     label: "SALES",
@@ -93,6 +97,7 @@ export const NAV_SECTIONS: NavSection[] = [
 ];
 
 export const QUICK_ACTIONS = [
+  { label: "New Project", href: "/projects/new", requiredPermission: "projects:create" as Permission },
   { label: "New Task", href: "/tasks/new", requiredPermission: "tasks:create" as Permission },
   { label: "New Note", href: "/notes/new", requiredPermission: "notes:create" as Permission },
   { label: "New Order", href: "/orders/new", requiredPermission: "orders:create" as Permission },

@@ -13,6 +13,8 @@ import type {
   DeliveryStatus,
   ExpenseStatus,
   VendorStatus,
+  ProjectStatus,
+  ProjectPriority,
 } from "@prisma/client";
 
 const toneClasses = {
@@ -205,3 +207,59 @@ export function VendorStatusBadge({ status }: { status: VendorStatus }) {
   const cfg = VENDOR_STATUS_CONFIG[status] ?? { label: status, tone: "neutral" };
   return <Badge tone={cfg.tone} label={cfg.label} />;
 }
+
+const PROJECT_STATUS_CONFIG: Record<ProjectStatus, { label: string; tone: Tone }> = {
+  NOT_STARTED: { label: "Not Started", tone: "neutral" },
+  IN_PROGRESS: { label: "In Progress", tone: "info" },
+  ON_HOLD: { label: "On Hold", tone: "warning" },
+  COMPLETED: { label: "Completed", tone: "success" },
+  CANCELLED: { label: "Cancelled", tone: "destructive" },
+};
+
+export function ProjectStatusBadge({ status }: { status: ProjectStatus }) {
+  const cfg = PROJECT_STATUS_CONFIG[status] ?? { label: status, tone: "neutral" };
+  return <Badge tone={cfg.tone} label={cfg.label} />;
+}
+
+const PROJECT_PRIORITY_CONFIG: Record<ProjectPriority, { label: string; tone: Tone }> = {
+  LOW: { label: "Low", tone: "neutral" },
+  MEDIUM: { label: "Medium", tone: "info" },
+  HIGH: { label: "High", tone: "warning" },
+  URGENT: { label: "Urgent", tone: "destructive" },
+};
+
+export function ProjectPriorityBadge({ priority }: { priority: ProjectPriority }) {
+  const cfg = PROJECT_PRIORITY_CONFIG[priority] ?? { label: priority, tone: "neutral" };
+  return <Badge tone={cfg.tone} label={cfg.label} />;
+}
+
+const TIMER_STATUS_CONFIG: Record<"IDLE" | "RUNNING" | "PAUSED" | "COMPLETED", { label: string; tone: Tone }> = {
+  IDLE: { label: "Idle", tone: "neutral" },
+  RUNNING: { label: "Running", tone: "success" },
+  PAUSED: { label: "Paused", tone: "warning" },
+  COMPLETED: { label: "Completed", tone: "info" },
+};
+
+export function TimerStatusBadge({ status }: { status: "IDLE" | "RUNNING" | "PAUSED" | "COMPLETED" }) {
+  const cfg = TIMER_STATUS_CONFIG[status] ?? { label: status, tone: "neutral" };
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium whitespace-nowrap",
+        toneClasses[cfg.tone]
+      )}
+    >
+      {status === "RUNNING" && (
+        <span className="relative flex h-2 w-2 mr-1.5">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+        </span>
+      )}
+      {status === "PAUSED" && (
+        <span className="inline-block size-2 rounded-full bg-amber-500 mr-1.5" />
+      )}
+      {cfg.label}
+    </span>
+  );
+}
+
