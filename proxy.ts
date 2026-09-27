@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { getToken } from "next-auth/jwt";
 
 // Routes that don't require authentication
 const PUBLIC_PATHS = [
@@ -14,7 +15,7 @@ function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 }
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Allow public paths always
@@ -22,15 +23,13 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Check for NextAuth session cookies directly to avoid Edge Runtime DB import issues
-  const hasSession =
-    request.cookies.has("authjs.session-token") ||
-    request.cookies.has("__Secure-authjs.session-token") ||
-    request.cookies.has("next-auth.session-token") ||
-    request.cookies.has("__Secure-next-auth.session-token");
+  // Cryptographically verify the session JWT (signature + expiry) without
+  // touching the database, so this stays Edge Runtime-safe while actually
+  // authenticating the request instead of trusting cookie presence alone.
+  const token = await getToken({ req: request, secret: process.env.AUTH_SECRET });
 
   // If authenticated, allow through
-  if (hasSession) {
+  if (token) {
     return NextResponse.next();
   }
 

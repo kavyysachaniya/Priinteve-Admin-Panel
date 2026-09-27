@@ -14,7 +14,7 @@ import type { DocumentPreviewData } from "@/lib/types/document";
  */
 export function DocumentPreview({ doc }: { doc: DocumentPreviewData }) {
   return (
-    <div id="document-preview-container" className="document-page rounded-sm border p-10 print:rounded-none print:border-0 bg-white text-gray-900 font-sans shadow-sm">
+    <div id="document-preview-container" className="document-page flex flex-col rounded-sm border p-10 print:rounded-none print:border-0 bg-white text-gray-900 font-sans shadow-sm">
       <DocumentHeader doc={doc} />
 
       <div className="grid grid-cols-2 gap-6 py-6">
@@ -35,8 +35,11 @@ export function DocumentPreview({ doc }: { doc: DocumentPreviewData }) {
         />
       </div>
 
-      <TermsSection notes={doc.notes} terms={doc.terms} />
-      <DocumentFooter company={doc.company} />
+      {/* Pinned to the bottom of the page; on longer documents it simply follows the totals. */}
+      <div data-pdf-anchor-bottom className="mt-auto">
+        <TermsSection notes={doc.notes} terms={doc.terms} />
+        <DocumentFooter company={doc.company} />
+      </div>
     </div>
   );
 }

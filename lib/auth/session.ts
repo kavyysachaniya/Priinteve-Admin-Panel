@@ -10,6 +10,22 @@ export type SessionUser = {
   role: UserRole;
 };
 
+/** Thrown when no valid session exists. Maps to HTTP 401. */
+export class AuthenticationError extends Error {
+  constructor(message = "Authentication required. Please log in.") {
+    super(message);
+    this.name = "AuthenticationError";
+  }
+}
+
+/** Thrown when a valid session lacks the required role/permission. Maps to HTTP 403. */
+export class AuthorizationError extends Error {
+  constructor(message = "You don't have permission to perform this action.") {
+    super(message);
+    this.name = "AuthorizationError";
+  }
+}
+
 /**
  * Get the current Auth.js session.
  * Returns null if not authenticated.
@@ -27,7 +43,7 @@ export async function getSession() {
 export async function requireAuth(): Promise<SessionUser> {
   const user = await getSession();
   if (!user) {
-    throw new Error("Authentication required. Please log in.");
+    throw new AuthenticationError();
   }
   return user;
 }
@@ -38,7 +54,7 @@ export async function requireAuth(): Promise<SessionUser> {
 export async function requireRole(role: UserRole): Promise<SessionUser> {
   const user = await requireAuth();
   if (user.role !== role) {
-    throw new Error("You don't have permission to perform this action.");
+    throw new AuthorizationError();
   }
   return user;
 }
@@ -49,7 +65,7 @@ export async function requireRole(role: UserRole): Promise<SessionUser> {
 export async function requirePermission(permission: Permission): Promise<SessionUser> {
   const user = await requireAuth();
   if (!roleHasPermission(user.role, permission)) {
-    throw new Error("You don't have permission to perform this action.");
+    throw new AuthorizationError();
   }
   return user;
 }

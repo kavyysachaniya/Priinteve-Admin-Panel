@@ -1,7 +1,9 @@
-// One-off verification script for the Phase 1 core business flow (spec §19).
-// Exercises the real service layer against the dev SQLite DB — the same
+// Verification script for the core business flow (spec §19).
+// Exercises the real service layer against the configured database — the same
 // functions the UI calls — end to end: Customer → Product → Quotation →
 // Accept → Convert to Invoice → Partial Payment → Full Payment → Dashboard.
+// It removes everything it creates (and leftovers from earlier runs) so the
+// test customer's revenue never lingers in real dashboards/reports.
 import { prisma } from "../lib/prisma";
 import * as customerService from "../lib/services/customers";
 import * as productService from "../lib/services/products";
@@ -15,15 +17,85 @@ function assert(cond: unknown, message: string): asserts cond {
   if (!cond) throw new Error(`ASSERTION FAILED: ${message}`);
 }
 
+const TEST_CUSTOMER_NAME = "Test Flow Customer";
+const TEST_CUSTOMER_EMAIL = "testflow@example.com";
+const TEST_PRODUCT_NAME = "Digital Business Card";
+
+/** Deletes every record this script creates, for all test customers (current and previous runs). */
+async function cleanupTestFlowData() {
+  const customers = await prisma.customer.findMany({
+    where: { name: TEST_CUSTOMER_NAME, email: TEST_CUSTOMER_EMAIL },
+    select: {
+      id: true,
+      quotations: { select: { id: true, items: { select: { productId: true } } } },
+      invoices: { select: { id: true } },
+      payments: { select: { id: true } },
+      orders: { select: { id: true } },
+    },
+  });
+  if (customers.length === 0) return 0;
+
+  const customerIds = customers.map((c) => c.id);
+  const quotationIds = customers.flatMap((c) => c.quotations.map((q) => q.id));
+  const invoiceIds = customers.flatMap((c) => c.invoices.map((i) => i.id));
+  const paymentIds = customers.flatMap((c) => c.payments.map((p) => p.id));
+  const productIds = [
+    ...new Set(customers.flatMap((c) => c.quotations.flatMap((q) => q.items.map((i) => i.productId)))),
+  ].filter((id): id is string => Boolean(id));
+
+  // Never rewrite history the user has formally closed.
+  const journals = await prisma.journalEntry.findMany({
+    where: { OR: [{ invoiceId: { in: invoiceIds } }, { paymentId: { in: paymentIds } }] },
+    select: { id: true, date: true },
+  });
+  const closed = await prisma.accountingPeriod.findMany({ where: { status: "CLOSED" }, select: { startDate: true, endDate: true } });
+  const inClosed = journals.filter((j) => closed.some((p) => j.date >= p.startDate && j.date <= p.endDate));
+  if (inClosed.length) throw new Error(`Refusing cleanup: ${inClosed.length} test journal entries fall in a closed accounting period.`);
+
+  if (customers.some((c) => c.orders.length)) throw new Error("Refusing cleanup: a test customer has orders, which this script never creates.");
+
+  await prisma.$transaction([
+    prisma.activityLog.deleteMany({
+      where: {
+        OR: [
+          { customerId: { in: customerIds } },
+          { quotationId: { in: quotationIds } },
+          { invoiceId: { in: invoiceIds } },
+          { paymentId: { in: paymentIds } },
+          { entityId: { in: [...customerIds, ...quotationIds, ...invoiceIds, ...paymentIds, ...productIds] } },
+        ],
+      },
+    }),
+    prisma.journalEntry.deleteMany({ where: { id: { in: journals.map((j) => j.id) } } }),
+    prisma.payment.deleteMany({ where: { id: { in: paymentIds } } }),
+    prisma.invoice.deleteMany({ where: { id: { in: invoiceIds } } }),
+    prisma.quotation.deleteMany({ where: { id: { in: quotationIds } } }),
+    prisma.product.deleteMany({
+      where: {
+        id: { in: productIds },
+        name: TEST_PRODUCT_NAME,
+        quotationItems: { none: {} },
+        invoiceItems: { none: {} },
+        orderItems: { none: {} },
+      },
+    }),
+    prisma.customer.deleteMany({ where: { id: { in: customerIds } } }),
+  ]);
+  return customers.length;
+}
+
 async function main() {
+  const leftovers = await cleanupTestFlowData();
+  if (leftovers) console.log(`0) Removed ${leftovers} leftover test customer(s) from earlier runs.`);
+
   console.log("1) Creating customer…");
   const customer = await customerService.createCustomer({
     type: "INDIVIDUAL",
-    name: "Test Flow Customer",
+    name: TEST_CUSTOMER_NAME,
     contactPerson: "",
     phone: "9876543210",
     whatsapp: "",
-    email: "testflow@example.com",
+    email: TEST_CUSTOMER_EMAIL,
     gstin: "",
     pan: "",
     billingAddress: "123 MG Road",
@@ -39,7 +111,7 @@ async function main() {
 
   console.log("2) Creating product: Digital Business Card @ ₹999…");
   const product = await productService.createProduct({
-    name: "Digital Business Card",
+    name: TEST_PRODUCT_NAME,
     type: "SERVICE",
     categoryName: "Digital Products",
     description: "A shareable digital business card",
@@ -156,5 +228,12 @@ main()
     process.exitCode = 1;
   })
   .finally(async () => {
+    try {
+      await cleanupTestFlowData();
+      console.log("Cleaned up test data.");
+    } catch (err) {
+      console.error("Cleanup failed — remove 'Test Flow Customer' records manually:", err);
+      process.exitCode = 1;
+    }
     await prisma.$disconnect();
   });

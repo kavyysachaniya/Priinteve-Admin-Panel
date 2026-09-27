@@ -1,18 +1,20 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import * as projectService from "@/lib/services/projects";
 import { projectFormSchema } from "@/lib/validations/project";
-import { roleHasPermission } from "@/lib/auth/permissions";
-import type { ProjectPriority, ProjectStatus, UserRole } from "@prisma/client";
+import { requirePermission } from "@/lib/auth/session";
+import { toApiErrorResponse } from "@/lib/auth/api";
+import type { ProjectPriority, ProjectStatus } from "@prisma/client";
+import type { ListProjectsParams } from "@/lib/services/projects";
 
 export const dynamic = "force-dynamic";
 
+type ProjectSortField = NonNullable<ListProjectsParams["sort"]>;
+
+const SORT_FIELDS: ProjectSortField[] = ["createdAt", "name", "dueDate", "priority", "totalTime"];
+
 export async function GET(request: Request) {
   try {
-    const session = await auth();
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    await requirePermission("projects:view");
 
     const { searchParams } = new URL(request.url);
     const q = searchParams.get("q") ?? undefined;
@@ -21,7 +23,8 @@ export async function GET(request: Request) {
     const assignedToId = searchParams.get("assignedToId") ?? undefined;
     const customerId = searchParams.get("customerId") ?? undefined;
     const hasActiveTimer = searchParams.get("hasActiveTimer") === "true";
-    const sort = (searchParams.get("sort") as any) ?? undefined;
+    const sortParam = searchParams.get("sort");
+    const sort = SORT_FIELDS.find((f) => f === sortParam);
     const order = (searchParams.get("order") as "asc" | "desc") ?? undefined;
     const page = parseInt(searchParams.get("page") ?? "1", 10);
     const pageSize = parseInt(searchParams.get("pageSize") ?? "15", 10);
@@ -40,22 +43,14 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json(result);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || "Failed to list projects" }, { status: 500 });
+  } catch (err) {
+    return toApiErrorResponse(err);
   }
 }
 
 export async function POST(request: Request) {
   try {
-    const session = await auth();
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const role = (session.user as any).role as UserRole;
-    if (!roleHasPermission(role, "projects:create")) {
-      return NextResponse.json({ error: "Forbidden: insufficient permissions" }, { status: 403 });
-    }
+    const user = await requirePermission("projects:create");
 
     const body = await request.json();
     const parsed = projectFormSchema.safeParse(body);
@@ -63,9 +58,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Validation error", details: parsed.error.format() }, { status: 400 });
     }
 
-    const project = await projectService.createProject(parsed.data, session.user.id);
+    const project = await projectService.createProject(parsed.data, user.id);
     return NextResponse.json(project, { status: 201 });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || "Failed to create project" }, { status: 500 });
+  } catch (err) {
+    return toApiErrorResponse(err);
   }
 }

@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { verifyPassword } from "@/lib/auth/password";
 import type { UserRole } from "@prisma/client";
 
+const USER_RECHECK_INTERVAL_MS = 60_000;
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     Credentials({
@@ -57,14 +59,33 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        token.role = (user as any).role as UserRole;
+        token.role = user.role;
+        token.checkedAt = Date.now();
+        return token;
+      }
+
+      // The JWT otherwise carries whatever role/status the user had at sign-in. Re-read them
+      // periodically so deactivation or a role change takes effect without waiting for re-login.
+      if (!token.id) return null;
+      if (Date.now() - (token.checkedAt ?? 0) < USER_RECHECK_INTERVAL_MS) return token;
+
+      try {
+        const current = await prisma.user.findUnique({
+          where: { id: token.id },
+          select: { role: true, status: true },
+        });
+        if (!current || current.status !== "ACTIVE") return null;
+        token.role = current.role;
+        token.checkedAt = Date.now();
+      } catch {
+        // A transient DB failure shouldn't sign everyone out; keep the last known values.
       }
       return token;
     },
     async session({ session, token }) {
       if (token && session.user) {
         session.user.id = token.id as string;
-        (session.user as any).role = token.role as UserRole;
+        session.user.role = token.role as UserRole;
       }
       return session;
     },

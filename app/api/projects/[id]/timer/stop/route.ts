@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import * as projectService from "@/lib/services/projects";
-import { roleHasPermission } from "@/lib/auth/permissions";
-import type { UserRole } from "@prisma/client";
+import { requirePermission } from "@/lib/auth/session";
+import { toApiErrorResponse } from "@/lib/auth/api";
 
 export const dynamic = "force-dynamic";
 
@@ -11,20 +10,15 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth();
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const role = (session.user as any).role as UserRole;
-    if (!roleHasPermission(role, "projects:timer")) {
-      return NextResponse.json({ error: "Forbidden: insufficient permissions" }, { status: 403 });
-    }
+    const user = await requirePermission("projects:timer");
 
     const { id } = await params;
-    await projectService.stopProjectTimer(id, session.user.id);
+    await projectService.stopProjectTimer(id, user.id);
     return NextResponse.json({ success: true, message: "Timer stopped" }, { status: 200 });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || "Failed to stop timer" }, { status: 400 });
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("only control your own timer")) {
+      return NextResponse.json({ error: err.message }, { status: 403 });
+    }
+    return toApiErrorResponse(err);
   }
 }

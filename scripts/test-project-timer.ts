@@ -106,6 +106,39 @@ async function main() {
   }
   assert(userConcurrencyError, "User should not be able to run multiple simultaneous project timers");
 
+  // 6b. Test Timer Ownership Protection: a different user must not be able to pause/stop this timer
+  console.log("6b) Testing timer ownership protection against a second user…");
+  const otherUser = await prisma.user.create({
+    data: {
+      name: "Other Tester",
+      email: `other-tester-${Date.now()}@priinteve.com`,
+      role: "EMPLOYEE",
+      status: "ACTIVE",
+    },
+  });
+
+  let ownershipErrorOnPause = false;
+  try {
+    await projectService.pauseProjectTimer(project.id, otherUser.id);
+  } catch (err: unknown) {
+    ownershipErrorOnPause = true;
+    console.log("   OK: Other user blocked from pausing:", err instanceof Error ? err.message : err);
+  }
+  assert(ownershipErrorOnPause, "A different user must not be able to pause someone else's running timer");
+
+  let ownershipErrorOnStop = false;
+  try {
+    await projectService.stopProjectTimer(project.id, otherUser.id);
+  } catch (err: unknown) {
+    ownershipErrorOnStop = true;
+    console.log("   OK: Other user blocked from stopping:", err instanceof Error ? err.message : err);
+  }
+  assert(ownershipErrorOnStop, "A different user must not be able to stop someone else's running timer");
+
+  const projectStillRunning = await projectService.getProjectById(project.id);
+  assert(projectStillRunning?.timerStatus === "RUNNING", "Timer must still be running after blocked attempts");
+  await prisma.user.delete({ where: { id: otherUser.id } });
+
   // 7. Wait 2 seconds and Pause Timer
   console.log("7) Simulating work and pausing timer…");
   await sleep(2000);

@@ -526,6 +526,7 @@ model Payment {
   @@index([customerId])
   @@index([invoiceId])
   @@index([paymentAccountId])
+  @@index([paymentDate])
 }
 
 model Task {
@@ -558,6 +559,7 @@ model Task {
   productionJob   ProductionJob? @relation(fields: [productionJobId], references: [id])
 
   events CalendarEvent[]
+  notes  Note[]
 
   activityLogs ActivityLog[]
 
@@ -592,6 +594,9 @@ model CalendarEvent {
   updatedAt DateTime @updatedAt
 
   @@index([startDate])
+  @@index([customerId])
+  @@index([orderId])
+  @@index([taskId])
 }
 
 model Note {
@@ -608,7 +613,7 @@ model Note {
   order   Order?   @relation(fields: [orderId], references: [id])
 
   taskId String?
-  task   String?
+  task   Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -616,6 +621,7 @@ model Note {
   @@index([pinned])
   @@index([customerId])
   @@index([orderId])
+  @@index([taskId])
 }
 
 model Project {
@@ -804,6 +810,7 @@ model ActivityLog {
   @@index([orderId])
   @@index([vendorId])
   @@index([projectId])
+  @@index([entityType, entityId])
 }
 
 model CompanySettings {

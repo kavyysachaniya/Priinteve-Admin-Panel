@@ -1,6 +1,8 @@
 import { prisma, TX_OPTIONS } from "@/lib/prisma";
 import { generateOrderNumber, issueDocumentNumber } from "@/lib/services/numbering";
 import { logActivity } from "@/lib/services/activity";
+import { getCompanySettings } from "@/lib/services/settings";
+import { computeFlatRateTotals } from "@/lib/money";
 import type { OrderFormValues } from "@/lib/validations/order";
 import type { Prisma, Order, OrderItem, OrderStatus } from "@prisma/client";
 
@@ -137,8 +139,26 @@ export function orderToFormValues(order: Order & { items: OrderItem[] }): OrderF
   };
 }
 
+/** Server-side source of truth for order money; totals posted by the form are ignored. */
+function computeOrderTotals(
+  items: OrderFormValues["items"],
+  discountPaise: number,
+  gstRate: number,
+  shippingPaise = 0
+) {
+  const totals = computeFlatRateTotals(
+    items.map((item) => ({ quantity: item.quantity, ratePaise: item.unitPricePaise })),
+    discountPaise,
+    gstRate,
+    shippingPaise
+  );
+  const lines = items.map((item, i) => ({ ...item, totalPaise: totals.lineTotalsPaise[i] }));
+  return { ...totals, lines };
+}
+
 export async function createOrder(data: OrderFormValues, userId?: string) {
-  const number = await generateOrderNumber();
+  const [number, settings] = await Promise.all([generateOrderNumber(), getCompanySettings()]);
+  const totals = computeOrderTotals(data.items, data.discountPaise, settings.defaultGstRate);
 
   const order = await prisma.$transaction(async (tx) => {
     const o = await tx.order.create({
@@ -148,14 +168,14 @@ export async function createOrder(data: OrderFormValues, userId?: string) {
         priority: data.priority,
         orderDate: new Date(data.orderDate),
         expectedCompletionDate: data.expectedCompletionDate ? new Date(data.expectedCompletionDate) : null,
-        subtotalPaise: data.subtotalPaise,
-        discountPaise: data.discountPaise,
-        taxPaise: Math.round((data.taxablePaise * 18) / 100),
-        totalPaise: data.totalAmountPaise,
+        subtotalPaise: totals.subtotalPaise,
+        discountPaise: totals.discountPaise,
+        taxPaise: totals.taxPaise,
+        totalPaise: totals.totalPaise,
         notes: data.title || data.notes || null,
         sourceQuotationId: data.quotationId || null,
         items: {
-          create: data.items.map((item, idx) => ({
+          create: totals.lines.map((item, idx) => ({
             productId: item.productId || null,
             name: item.name,
             description: item.description || null,
@@ -284,7 +304,14 @@ export async function convertQuotationToOrder(quotationId: string, userId?: stri
 }
 
 export async function updateOrder(id: string, data: OrderFormValues, userId?: string) {
+  const settings = await getCompanySettings();
+
   const order = await prisma.$transaction(async (tx) => {
+    const existing = await tx.order.findUnique({ where: { id }, select: { shippingPaise: true } });
+    if (!existing) throw new Error("Order not found");
+    // Shipping isn't editable in the order form, so keep what's stored (e.g. from a quotation).
+    const totals = computeOrderTotals(data.items, data.discountPaise, settings.defaultGstRate, existing.shippingPaise);
+
     await tx.orderItem.deleteMany({ where: { orderId: id } });
 
     const updated = await tx.order.update({
@@ -294,13 +321,13 @@ export async function updateOrder(id: string, data: OrderFormValues, userId?: st
         priority: data.priority,
         orderDate: new Date(data.orderDate),
         expectedCompletionDate: data.expectedCompletionDate ? new Date(data.expectedCompletionDate) : null,
-        subtotalPaise: data.subtotalPaise,
-        discountPaise: data.discountPaise,
-        taxPaise: Math.round((data.taxablePaise * 18) / 100),
-        totalPaise: data.totalAmountPaise,
+        subtotalPaise: totals.subtotalPaise,
+        discountPaise: totals.discountPaise,
+        taxPaise: totals.taxPaise,
+        totalPaise: totals.totalPaise,
         notes: data.title || data.notes || null,
         items: {
-          create: data.items.map((item, idx) => ({
+          create: totals.lines.map((item, idx) => ({
             productId: item.productId || null,
             name: item.name,
             description: item.description || null,

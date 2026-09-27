@@ -62,12 +62,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="flex h-dvh w-full overflow-hidden bg-muted/30">
-        <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} />
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <Topbar />
-          <main className="flex-1 overflow-y-auto overflow-x-hidden">
-            <div className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8 overflow-x-hidden">
+      {/* print: variants release the viewport-locked, scrolling shell so printed documents
+          aren't clipped to one screen and don't include app chrome. Screen layout is unchanged. */}
+      <div className="flex h-dvh w-full overflow-hidden bg-muted/30 print:block print:h-auto print:overflow-visible print:bg-white">
+        <div className="contents print-hide">
+          <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} />
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden print:block print:overflow-visible">
+          <div className="contents print-hide">
+            <Topbar />
+          </div>
+          <main className="flex-1 overflow-y-auto overflow-x-hidden print:overflow-visible">
+            <div className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8 overflow-x-hidden print:max-w-none print:overflow-visible print:p-0">
               {children}
             </div>
           </main>

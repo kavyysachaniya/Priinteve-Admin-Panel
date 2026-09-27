@@ -89,6 +89,31 @@ export interface DocumentTotals {
   totalPaise: number;
 }
 
+/**
+ * Totals for documents taxed at one document-level GST rate (orders): lines are quantity × rate,
+ * subtotal is after the discount and before tax — the same convention as DocumentTotals.
+ */
+export function computeFlatRateTotals(
+  lines: { quantity: number; ratePaise: number }[],
+  discountPaise: number,
+  gstRate: number,
+  shippingPaise = 0
+): DocumentTotals & { lineTotalsPaise: number[] } {
+  const lineTotalsPaise = lines.map((l) => Math.round(l.quantity * l.ratePaise));
+  const grossPaise = sumPaise(lineTotalsPaise);
+  const discount = Math.min(Math.max(discountPaise, 0), grossPaise);
+  const subtotalPaise = grossPaise - discount;
+  const taxPaise = applyPercent(subtotalPaise, gstRate);
+  return {
+    lineTotalsPaise,
+    subtotalPaise,
+    discountPaise: discount,
+    taxPaise,
+    shippingPaise,
+    totalPaise: subtotalPaise + taxPaise + shippingPaise,
+  };
+}
+
 /** Aggregate a set of line items (+ optional shipping) into document totals. */
 export function computeDocumentTotals(
   items: LineItemInput[],

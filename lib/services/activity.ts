@@ -16,7 +16,8 @@ export type EntityType =
   | "vendor"
   | "task"
   | "note"
-  | "calendar_event";
+  | "calendar_event"
+  | "project";
 
 export type ActivityInput = {
   type: string;
@@ -33,6 +34,7 @@ export type ActivityInput = {
   expenseId?: string | null;
   vendorId?: string | null;
   taskId?: string | null;
+  projectId?: string | null;
   userId?: string | null;
 };
 
@@ -56,6 +58,7 @@ export async function logActivity(
     expenseId: input.expenseId ?? null,
     vendorId: input.vendorId ?? null,
     taskId: input.taskId ?? null,
+    projectId: input.projectId ?? null,
     userId: input.userId ?? null,
   };
 

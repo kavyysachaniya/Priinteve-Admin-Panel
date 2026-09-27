@@ -176,23 +176,68 @@ export async function listProjects(params: ListProjectsParams = {}) {
     orderBy.push({ createdAt: orderDirection });
   }
 
-  // If sorting by totalTime, we fetch all matching rows, compute duration, sort in-memory, and slice for pagination
+  // Sorting by totalTime requires ranking every matching project by tracked duration before
+  // paginating. Instead of pulling every project's full time-entry history into memory, compute
+  // the ranking from DB-side aggregates (cheap: ids + summed durations + the small set of
+  // currently-running entries) and only fetch full records for the one page we're returning.
   if (params.sort === "totalTime") {
-    const allMatching = await prisma.project.findMany({
-      where,
-      include: {
-        customer: { select: { id: true, name: true, email: true, phone: true } },
-        assignedTo: { select: { id: true, name: true, email: true } },
-        createdBy: { select: { id: true, name: true } },
-        timeEntries: {
-          include: {
-            user: { select: { id: true, name: true } },
-          },
-        },
-      },
+    const matchingIds = await prisma.project.findMany({ where, select: { id: true } });
+    const ids = matchingIds.map((p) => p.id);
+
+    const [durationSums, runningEntries] = await Promise.all([
+      ids.length
+        ? prisma.projectTimeEntry.groupBy({
+            by: ["projectId"],
+            where: { projectId: { in: ids } },
+            _sum: { durationSeconds: true },
+          })
+        : [],
+      ids.length
+        ? prisma.projectTimeEntry.findMany({
+            where: { projectId: { in: ids }, status: "RUNNING" },
+            select: { projectId: true, startedAt: true },
+          })
+        : [],
+    ]);
+
+    const now = Date.now();
+    const totals = new Map<string, number>(ids.map((id) => [id, 0]));
+    for (const row of durationSums) {
+      totals.set(row.projectId, (totals.get(row.projectId) ?? 0) + (row._sum.durationSeconds ?? 0));
+    }
+    for (const entry of runningEntries) {
+      const elapsed = Math.max(0, Math.floor((now - new Date(entry.startedAt).getTime()) / 1000));
+      totals.set(entry.projectId, (totals.get(entry.projectId) ?? 0) + elapsed);
+    }
+
+    const sortedIds = [...ids].sort((a, b) => {
+      const diff = (totals.get(a) ?? 0) - (totals.get(b) ?? 0);
+      return orderDirection === "asc" ? diff : -diff;
     });
 
-    const enriched = allMatching.map((p) => {
+    const total = sortedIds.length;
+    const pageIds = sortedIds.slice((page - 1) * pageSize, page * pageSize);
+
+    const pageProjectsRaw = pageIds.length
+      ? await prisma.project.findMany({
+          where: { id: { in: pageIds } },
+          include: {
+            customer: { select: { id: true, name: true, email: true, phone: true } },
+            assignedTo: { select: { id: true, name: true, email: true } },
+            createdBy: { select: { id: true, name: true } },
+            timeEntries: {
+              include: {
+                user: { select: { id: true, name: true } },
+              },
+            },
+          },
+        })
+      : [];
+
+    const byId = new Map(pageProjectsRaw.map((p) => [p.id, p]));
+    const orderedRaw = pageIds.map((id) => byId.get(id)).filter((p): p is (typeof pageProjectsRaw)[number] => Boolean(p));
+
+    const projects = orderedRaw.map((p) => {
       const metrics = computeProjectTimerMetrics(p);
       return {
         ...p,
@@ -200,17 +245,8 @@ export async function listProjects(params: ListProjectsParams = {}) {
       };
     });
 
-    enriched.sort((a, b) => {
-      return orderDirection === "asc"
-        ? a.totalDurationSeconds - b.totalDurationSeconds
-        : b.totalDurationSeconds - a.totalDurationSeconds;
-    });
-
-    const total = enriched.length;
-    const paginated = enriched.slice((page - 1) * pageSize, page * pageSize);
-
     return {
-      projects: paginated,
+      projects,
       total,
       page,
       pageSize,
@@ -286,34 +322,33 @@ export async function getProjectById(id: string): Promise<ProjectDetail | null> 
 }
 
 export async function getProjectStats() {
-  const [totalProjects, inProgressProjects, completedProjects, notStartedProjects, onHoldProjects, allEntries] =
+  const [totalProjects, inProgressProjects, completedProjects, notStartedProjects, onHoldProjects, trackedAgg, runningEntries] =
     await Promise.all([
       prisma.project.count(),
       prisma.project.count({ where: { status: "IN_PROGRESS" } }),
       prisma.project.count({ where: { status: "COMPLETED" } }),
       prisma.project.count({ where: { status: "NOT_STARTED" } }),
       prisma.project.count({ where: { status: "ON_HOLD" } }),
+      // Completed/paused durations are summed at the DB level rather than fetching every
+      // historical time entry — only the (small) set of currently-running entries needs
+      // to be pulled into memory to add their live elapsed time below.
+      prisma.projectTimeEntry.aggregate({
+        where: { status: { not: "RUNNING" } },
+        _sum: { durationSeconds: true },
+      }),
       prisma.projectTimeEntry.findMany({
-        select: {
-          startedAt: true,
-          durationSeconds: true,
-          status: true,
-        },
+        where: { status: "RUNNING" },
+        select: { startedAt: true },
       }),
     ]);
 
   const now = Date.now();
-  let totalTrackedSeconds = 0;
-  let activeTimersCount = 0;
+  let totalTrackedSeconds = trackedAgg._sum.durationSeconds ?? 0;
+  const activeTimersCount = runningEntries.length;
 
-  for (const entry of allEntries) {
-    if (entry.status === "RUNNING") {
-      activeTimersCount++;
-      const started = new Date(entry.startedAt).getTime();
-      totalTrackedSeconds += Math.max(0, Math.floor((now - started) / 1000));
-    } else {
-      totalTrackedSeconds += entry.durationSeconds || 0;
-    }
+  for (const entry of runningEntries) {
+    const started = new Date(entry.startedAt).getTime();
+    totalTrackedSeconds += Math.max(0, Math.floor((now - started) / 1000));
   }
 
   return {
@@ -346,8 +381,9 @@ export async function createProject(values: ProjectFormValues, userId?: string) 
   await logActivity({
     type: "PROJECT_CREATED",
     message: `Project "${project.name}" was created.`,
-    entityType: "task" as any, // fallback entity type or task
+    entityType: "project",
     entityId: project.id,
+    projectId: project.id,
     customerId: project.customerId,
     userId: userId || null,
   }).catch(() => {});
@@ -409,8 +445,9 @@ export async function updateProject(id: string, values: ProjectFormValues, userI
   await logActivity({
     type: activityType,
     message: `Project "${updated.name}" was ${activityType === "PROJECT_COMPLETED" ? "completed" : "updated"}.`,
-    entityType: "task" as any,
+    entityType: "project",
     entityId: updated.id,
+    projectId: updated.id,
     customerId: updated.customerId,
     userId: userId || null,
   }).catch(() => {});
@@ -431,8 +468,9 @@ export async function deleteProject(id: string, userId?: string) {
   await logActivity({
     type: "PROJECT_DELETED",
     message: `Project "${existing.name}" was deleted.`,
-    entityType: "task" as any,
+    entityType: "project",
     entityId: existing.id,
+    projectId: existing.id,
     customerId: existing.customerId,
     userId: userId || null,
   }).catch(() => {});
@@ -523,8 +561,9 @@ export async function startProjectTimer(projectId: string, userId?: string, note
   logActivity({
     type: "TIMER_STARTED",
     message: `Timer started on project "${projectName}".`,
-    entityType: "task" as any,
+    entityType: "project",
     entityId: projectId,
+    projectId,
     customerId,
     userId: userId || null,
   }).catch(() => {});
@@ -562,6 +601,10 @@ export async function pauseProjectTimer(projectId: string, userId?: string) {
       throw new Error("No active running timer found for this project.");
     }
 
+    if (runningEntry.userId !== userId) {
+      throw new Error("You can only control your own timer.");
+    }
+
     const now = new Date();
     elapsed = Math.max(0, Math.floor((now.getTime() - new Date(runningEntry.startedAt).getTime()) / 1000));
 
@@ -578,8 +621,9 @@ export async function pauseProjectTimer(projectId: string, userId?: string) {
   logActivity({
     type: "TIMER_PAUSED",
     message: `Timer paused on project "${projectName}". Recorded session: ${elapsed}s.`,
-    entityType: "task" as any,
+    entityType: "project",
     entityId: projectId,
+    projectId,
     customerId,
     userId: userId || null,
   }).catch(() => {});
@@ -663,8 +707,9 @@ export async function resumeProjectTimer(projectId: string, userId?: string) {
   logActivity({
     type: "TIMER_RESUMED",
     message: `Timer resumed on project "${projectName}".`,
-    entityType: "task" as any,
+    entityType: "project",
     entityId: projectId,
+    projectId,
     customerId,
     userId: userId || null,
   }).catch(() => {});
@@ -701,6 +746,9 @@ export async function stopProjectTimer(projectId: string, userId?: string) {
     });
 
     if (runningEntry) {
+      if (runningEntry.userId !== userId) {
+        throw new Error("You can only control your own timer.");
+      }
       const elapsed = Math.max(0, Math.floor((now.getTime() - new Date(runningEntry.startedAt).getTime()) / 1000));
       await tx.projectTimeEntry.update({
         where: { id: runningEntry.id },
@@ -727,8 +775,9 @@ export async function stopProjectTimer(projectId: string, userId?: string) {
   logActivity({
     type: "TIMER_STOPPED",
     message: `Timer stopped on project "${projectName}".`,
-    entityType: "task" as any,
+    entityType: "project",
     entityId: projectId,
+    projectId,
     customerId,
     userId: userId || null,
   }).catch(() => {});

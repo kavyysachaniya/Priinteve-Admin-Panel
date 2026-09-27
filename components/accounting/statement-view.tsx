@@ -9,6 +9,7 @@ import { Calendar, Download, Printer, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { fetchCustomerStatementAction, fetchVendorStatementAction } from "@/lib/actions/statements";
 import { exportElementToPdf } from "@/lib/pdf/exporter";
+import type { CustomerStatement, VendorStatement } from "@/lib/services/accounting/statements";
 
 interface StatementLine {
   date: string | Date;
@@ -51,7 +52,7 @@ export function StatementView({
   const handleFilter = async () => {
     setLoading(true);
     try {
-      let data;
+      let data: CustomerStatement | VendorStatement | null;
       if (entityType === "customer") {
         data = await fetchCustomerStatementAction(entityId, startDate, endDate);
       } else {
@@ -59,7 +60,7 @@ export function StatementView({
       }
 
       if (data) {
-        setStatement(data as any);
+        setStatement(data);
         toast.success("Statement updated");
       } else {
         toast.error("Failed to load statement data");

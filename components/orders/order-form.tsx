@@ -13,7 +13,7 @@ import { Field, FormSection } from "@/components/shared/field";
 import { CustomerCombobox, type ComboboxCustomer } from "@/components/shared/customer-combobox";
 import { orderFormSchema, orderFormDefaults, type OrderFormValues } from "@/lib/validations/order";
 import { createOrderAction, updateOrderAction } from "@/lib/actions/orders";
-import { formatCurrency, rupeesToPaise } from "@/lib/money";
+import { computeFlatRateTotals, formatCurrency, rupeesToPaise } from "@/lib/money";
 import type { OrderPriority } from "@prisma/client";
 
 export function OrderForm({
@@ -21,11 +21,16 @@ export function OrderForm({
   defaultValues,
   customers = [],
   products = [],
+  gstRatePercent = 18,
+  shippingPaise = 0,
 }: {
   orderId?: string;
   defaultValues?: Partial<OrderFormValues>;
   customers?: ComboboxCustomer[];
   products?: Array<{ id: string; name: string; basePricePaise: number }>;
+  gstRatePercent?: number;
+  /** Stored shipping on an existing order (not editable here, but part of the total). */
+  shippingPaise?: number;
 }) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
@@ -53,10 +58,17 @@ export function OrderForm({
   const priority = watch("priority");
   const items = watch("items") || [];
 
-  const subtotalPaise = items.reduce((sum, item) => sum + (item.totalPaise || 0), 0);
-  const taxablePaise = subtotalPaise;
-  const gstPaise = Math.round((taxablePaise * 18) / 100);
-  const totalAmountPaise = taxablePaise + gstPaise;
+  // Mirrors the server's calculation in lib/services/orders.ts, which is what gets saved.
+  const discountInput = watch("discountPaise") || 0;
+  const totals = computeFlatRateTotals(
+    items.map((item) => ({ quantity: item.quantity || 0, ratePaise: item.unitPricePaise || 0 })),
+    discountInput,
+    gstRatePercent,
+    shippingPaise
+  );
+  const subtotalPaise = totals.subtotalPaise;
+  const taxablePaise = totals.subtotalPaise;
+  const totalAmountPaise = totals.totalPaise;
 
   async function onSubmit(values: OrderFormValues) {
     setSubmitting(true);
@@ -191,7 +203,7 @@ export function OrderForm({
       </FormSection>
 
       <div className="p-4 rounded-lg border bg-muted/40 flex justify-between items-center text-sm font-bold">
-        <span>Order Total (Inc GST 18%):</span>
+        <span>Order Total (Inc GST {gstRatePercent}%):</span>
         <span className="text-lg text-primary">{formatCurrency(totalAmountPaise)}</span>
       </div>
 

@@ -203,7 +203,10 @@
   }
   .document-page {
     width: auto;
-    min-height: 0;
+    /* One printable A4 page (297mm − 2 × 14mm @page margin), less a small buffer so rounding
+       never spills a blank second page. Lets the terms/bank-details block sit at the bottom of
+       a single-page document; longer documents just grow past it. */
+    min-height: 267mm;
     box-shadow: none;
     margin: 0;
   }

@@ -1,5 +1,5 @@
 import { PageHeader } from "@/components/shared/page-header";
-import { getAccountLedger, getJournalEntryDetail } from "@/lib/services/accounting/journal";
+import { getAccountLedger, getJournalEntryDetail, type LedgerLine } from "@/lib/services/accounting/journal";
 import { listAccounts } from "@/lib/services/accounting/accounts";
 import { formatCurrency } from "@/lib/money";
 import { requirePermission } from "@/lib/auth/session";
@@ -36,8 +36,13 @@ export default async function LedgerPage(props: { searchParams: Promise<SearchPa
 
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
 
-  let ledgerData = {
-    lines: [] as any[],
+  let ledgerData: {
+    lines: LedgerLine[];
+    openingBalance: number;
+    closingBalance: number;
+    total: number;
+  } = {
+    lines: [],
     openingBalance: 0,
     closingBalance: 0,
     total: 0,

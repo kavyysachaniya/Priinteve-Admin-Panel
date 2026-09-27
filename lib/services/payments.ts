@@ -3,9 +3,30 @@ import { rupeesToPaise } from "@/lib/money";
 import { logActivity } from "@/lib/services/activity";
 import { postPaymentJournal, reversePaymentJournal } from "@/lib/services/accounting/auto-accounting";
 import type { PaymentFormValues } from "@/lib/validations/payment";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
 const PAGE_SIZE = 10;
+
+// Serializable isolation closes the lost-update window where two concurrent payments
+// against the same invoice could both read the same stale amountPaidPaise and one
+// overwrite the other's contribution. Postgres surfaces the conflict as P2034, which
+// we retry once (the standard recommended handling for serialization failures) before
+// giving up with a message the user can act on.
+const PAYMENT_TX_OPTIONS = {
+  ...TX_OPTIONS,
+  isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+};
+
+async function runSerializable<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2034") {
+      return await fn();
+    }
+    throw err;
+  }
+}
 
 export interface ListPaymentsParams {
   q?: string;
@@ -73,6 +94,17 @@ export async function listPayableInvoices() {
 export async function createPayment(data: PaymentFormValues, userId?: string) {
   const amountPaise = rupeesToPaise(data.amount);
 
+  try {
+    return await runSerializable(() => createPaymentTx(data, amountPaise, userId));
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2034") {
+      throw new Error("This invoice was updated by another payment at the same time. Please retry.");
+    }
+    throw err;
+  }
+}
+
+function createPaymentTx(data: PaymentFormValues, amountPaise: number, userId?: string) {
   return prisma.$transaction(async (tx) => {
     const invoice = await tx.invoice.findUnique({ where: { id: data.invoiceId } });
     if (!invoice) throw new Error("Invoice not found");
@@ -138,7 +170,7 @@ export async function createPayment(data: PaymentFormValues, userId?: string) {
     }
 
     return payment;
-  }, TX_OPTIONS);
+  }, PAYMENT_TX_OPTIONS);
 }
 
 export async function getPaymentDetail(id: string) {
@@ -149,6 +181,17 @@ export async function getPaymentDetail(id: string) {
 }
 
 export async function deletePayment(id: string, userId?: string) {
+  try {
+    return await runSerializable(() => deletePaymentTx(id, userId));
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2034") {
+      throw new Error("This invoice was updated by another payment at the same time. Please retry.");
+    }
+    throw err;
+  }
+}
+
+function deletePaymentTx(id: string, userId?: string) {
   return prisma.$transaction(async (tx) => {
     const payment = await tx.payment.findUnique({ where: { id }, include: { invoice: true } });
     if (!payment) throw new Error("Payment not found");
@@ -179,5 +222,5 @@ export async function deletePayment(id: string, userId?: string) {
       },
       tx
     );
-  }, TX_OPTIONS);
+  }, PAYMENT_TX_OPTIONS);
 }

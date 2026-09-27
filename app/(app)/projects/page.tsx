@@ -8,11 +8,18 @@ import { ProjectStatsCards } from "@/components/projects/project-stats-cards";
 import { TableToolbar } from "@/components/shared/table-toolbar";
 import { TableFilterSelect } from "@/components/shared/table-filter-select";
 import { TablePagination } from "@/components/shared/table-pagination";
-import { listProjects, getProjectStats } from "@/lib/services/projects";
+import { listProjects, getProjectStats, type ListProjectsParams } from "@/lib/services/projects";
 import { Plus } from "lucide-react";
 import type { ProjectPriority, ProjectStatus } from "@prisma/client";
 
 export const metadata = { title: "Projects — Priinteve Business OS" };
+
+type ProjectSortField = NonNullable<ListProjectsParams["sort"]>;
+const SORT_FIELDS: ProjectSortField[] = ["createdAt", "name", "dueDate", "priority", "totalTime"];
+
+function toSortField(value: string | undefined): ProjectSortField | undefined {
+  return SORT_FIELDS.find((f) => f === value);
+}
 
 export default async function ProjectsPage({
   searchParams,
@@ -36,7 +43,7 @@ export default async function ProjectsPage({
       status: (params.status as ProjectStatus) || undefined,
       priority: (params.priority as ProjectPriority) || undefined,
       hasActiveTimer: params.hasActiveTimer === "true",
-      sort: (params.sort as any) || undefined,
+      sort: toSortField(params.sort),
       order: (params.order as "asc" | "desc") || undefined,
       page,
     }),

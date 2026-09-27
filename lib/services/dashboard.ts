@@ -32,7 +32,7 @@ export async function getSummaryCards() {
     const prevMonthStart = startOfMonth(subDays(monthStart, 1));
     const prevMonthEnd = monthStart;
 
-    const [thisMonthPayments, lastMonthPayments, outstandingInvoices, totalExpenses, thisMonthExpenses, lastMonthExpenses] = await Promise.all([
+    const [thisMonthPayments, lastMonthPayments, outstandingInvoices, thisMonthExpenses, lastMonthExpenses] = await Promise.all([
       prisma.payment.aggregate({ _sum: { amountPaise: true }, where: { paymentDate: { gte: monthStart } } }),
       prisma.payment.aggregate({
         _sum: { amountPaise: true },
@@ -42,7 +42,6 @@ export async function getSummaryCards() {
         where: { status: { notIn: ["CANCELLED"] } },
         select: { totalPaise: true, amountPaidPaise: true },
       }),
-      getExpensesTotal(),
       prisma.expense.aggregate({
         _sum: { totalAmountPaise: true },
         where: { status: "RECORDED", date: { gte: monthStart } },
@@ -65,7 +64,8 @@ export async function getSummaryCards() {
     return {
       revenuePaise: revenue,
       revenueChange: percentChange(revenue, lastRevenue),
-      expensesPaise: totalExpenses,
+      // Same current-month scope as revenue/netProfit above, so the three KPI cards agree.
+      expensesPaise: expenses,
       expensesChange: percentChange(expenses, lastExpenses),
       netProfitPaise: netProfit,
       netProfitChange: percentChange(netProfit, lastNetProfit),
