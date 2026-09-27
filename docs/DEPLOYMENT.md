@@ -1,0 +1,90 @@
+# Deployment
+
+What a production deployment needs. Only what can be verified from the repository is stated as fact; anything else is marked as an assumption.
+
+Related: [DEVELOPMENT.md](./DEVELOPMENT.md) · [DATABASE.md](./DATABASE.md) · [AUTHORIZATION.md](./AUTHORIZATION.md) · [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)
+
+---
+
+## Known blocking issue: login loop over HTTPS
+
+> [!CAUTION]
+> Fix this before deploying to any HTTPS URL.
+
+`proxy.ts` calls `getToken({ req: request, secret: process.env.AUTH_SECRET })` without `secureCookie`. `getToken` then only looks for the cookie `authjs.session-token`. When the app is served over **HTTPS**, Auth.js stores the session in `__Secure-authjs.session-token` instead, and the cookie name is also part of the token's encryption salt.
+
+Result: on an HTTPS deployment, `proxy.ts` never finds a valid token. Every page redirects to `/login`, even right after a successful sign-in. Local development over `http://localhost` is unaffected, which is why local testing doesn't show it.
+
+The fix belongs in `proxy.ts`: read the secure cookie when the request is HTTPS — for example `secureCookie: request.nextUrl.protocol === "https:"`, or try the secure name first and fall back to the plain one. After fixing, remove this section and the matching entry in [TROUBLESHOOTING.md](./TROUBLESHOOTING.md#redirected-to-login-after-signing-in-production).
+
+## What the repository defines
+
+| Item | Value |
+|---|---|
+| Hosting platform | **Not defined.** There is no `vercel.json`, `vercel.ts`, Dockerfile or CI workflow. `.gitignore` excludes `.vercel`, which suggests Vercel has been used, but nothing else confirms it. |
+| Build command | `npm run build` → `next build` (Turbopack) |
+| Start command | `npm start` → `next start` (port 3000 unless `PORT` is set) |
+| Node.js | ≥ 20.9.0 |
+| Database | PostgreSQL on Neon |
+| Background jobs, cron, queues | None |
+| File storage | None (the `Attachment` model is unused) |
+
+## Environment variables
+
+Set these on the host. Never commit real values; `.env.example` holds placeholders only.
+
+| Variable | Production value |
+|---|---|
+| `DATABASE_URL` | Neon **pooled** URL with `sslmode=require&connect_timeout=10&connection_limit=10&pool_timeout=10`. **No `pgbouncer=true`.** |
+| `DIRECT_URL` | Neon **direct** URL. Needed wherever you run `prisma db push`. |
+| `AUTH_SECRET` | A strong random secret, different from development. Rotating it signs everyone out. |
+| `NEXTAUTH_URL` | The public HTTPS URL of the app, for example `https://admin.example.com`. |
+| `AUTH_TRUST_HOST` | `true` on **non-Vercel** hosts. |
+
+Why `AUTH_TRUST_HOST`: Auth.js v5 trusts the request host only if one of `AUTH_URL`, `AUTH_TRUST_HOST`, `VERCEL` or `CF_PAGES` is set, or `NODE_ENV` isn't `production` (`node_modules/@auth/core/lib/utils/env.js`). `NEXTAUTH_URL` alone does not count. Vercel sets `VERCEL` automatically; other hosts need `AUTH_TRUST_HOST=true` (or `AUTH_URL`), otherwise Auth.js rejects requests with an "UntrustedHost" error.
+
+## Database
+
+- **Runtime** connects through the pooled URL. `connection_limit=10` caps connections per server instance.
+- **Schema changes** are applied with `prisma db push` against the production database, using `DIRECT_URL`. There are no migrations to deploy.
+  - Run it whenever `prisma/schema.prisma` changes, **before** the new code goes live if the code depends on new columns.
+  - `db push` refuses destructive changes unless told to accept data loss. Rehearse on a Neon branch first.
+- **First deployment:** after the first `db push`, run `npm run db:seed` once against the production database to create expense categories, numbering sequences and the first users. Then change the seeded passwords and fill in **Settings**.
+- **Neon behaviour:** idle pooled connections are closed and the compute suspends after about 5 minutes. The first request afterwards is slower while it wakes. `TX_OPTIONS` (15 s wait, 30 s timeout) allows for this, and the resulting connection-reset log lines are filtered ([TROUBLESHOOTING.md](./TROUBLESHOOTING.md#neon-idle-disconnect-errors-in-the-terminal)).
+- **Latency:** every page runs several queries. Put the app and the Neon database in the same or nearby regions.
+
+## Prisma client generation
+
+`npm run build` does not run `prisma generate`. The client is generated when `@prisma/client` is installed (its `postinstall`) and by `prisma db push`.
+
+> [!NOTE]
+> Assumption, not verified in this repository: hosts that cache `node_modules` between builds (Vercel does) can skip that install step and ship an out-of-date client after a schema change. If a deploy fails with Prisma type or field errors, run `prisma generate` as part of the build (for example `prisma generate && next build`).
+
+## Deployment workflow
+
+1. Run the checks locally ([TESTING.md](./TESTING.md)): `npx tsc --noEmit`, lint on changed files, `npm run build`, and the relevant `scripts/test-*.ts`.
+2. If the schema changed, run `npm run db:push` against a Neon branch, then against production.
+3. Make sure the host's environment variables match [the table above](#environment-variables).
+4. Build and deploy (`npm run build`, then `npm start`, or the host's equivalent).
+5. Smoke-test in the deployed app:
+   - sign in and open a few pages;
+   - open an invoice and use Print and Download PDF;
+   - as an Employee, confirm that `/settings` redirects to `/dashboard`.
+
+## Production configuration notes
+
+- **Sessions** are JWT cookies that expire after 30 days idle. Role and status are re-checked about once a minute ([AUTHORIZATION.md](./AUTHORIZATION.md#session-validation)).
+- **Logging:** services log failures with `console.error`, and Prisma errors are printed as `prisma:error ...`. Neon idle-disconnect messages are dropped.
+- **Caching:** every app page and API route is `force-dynamic`; nothing is statically cached.
+- **Calendar feed:** `/api/calendar/feed` requires a signed-in session, so external calendar subscriptions don't receive data ([MODULES.md](./MODULES.md#calendar)).
+
+## Common deployment problems
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Every page redirects to `/login` after signing in (HTTPS only) | [Known blocking issue](#known-blocking-issue-login-loop-over-https) | Fix `proxy.ts` |
+| Auth error "UntrustedHost" | Non-Vercel host without `AUTH_TRUST_HOST`/`AUTH_URL` | Set `AUTH_TRUST_HOST=true` |
+| Everyone was signed out | `AUTH_SECRET` changed | Expected; keep it stable |
+| Slow pages or "Timed out fetching a new connection from the connection pool" | `pgbouncer=true` in `DATABASE_URL`, or the app and database are far apart | Remove the flag; co-locate regions |
+| `prisma db push` fails or wants to drop data | Destructive schema change | Rehearse on a Neon branch; migrate data manually first |
+| "A record with these details already exists." when saving expenses on a demo database | `seed-realistic.ts` numbering collision | See [DATABASE.md](./DATABASE.md#gotchas) |
