@@ -21,7 +21,7 @@ export function DocumentTotals({
 
   return (
     <div className="ml-auto w-full max-w-[280px] space-y-1.5 text-sm">
-      <Row label="Subtotal" value={formatCurrency(subtotalPaise)} />
+      <Row label="Subtotal" value={formatCurrency(subtotalPaise + discountPaise)} />
       {discountPaise > 0 && <Row label="Discount" value={`− ${formatCurrency(discountPaise)}`} />}
       <Row label="Tax (GST)" value={formatCurrency(taxPaise)} />
       {shippingPaise > 0 && <Row label="Shipping / Other" value={formatCurrency(shippingPaise)} />}

@@ -19,9 +19,9 @@ export async function getExpensesTotal(): Promise<number> {
 export function percentChange(current: number, previous: number): { pct: number | null; direction: "up" | "down" | "neutral" } {
   if (previous === 0) {
     if (current === 0) return { pct: 0, direction: "neutral" };
-    return { pct: null, direction: "up" };
+    return { pct: null, direction: current > 0 ? "up" : "down" };
   }
-  const pct = ((current - previous) / previous) * 100;
+  const pct = ((current - previous) / Math.abs(previous)) * 100;
   return { pct, direction: pct > 0 ? "up" : pct < 0 ? "down" : "neutral" };
 }
 

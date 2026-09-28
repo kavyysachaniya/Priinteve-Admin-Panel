@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { generateExpenseNumber } from "@/lib/services/numbering";
 import { logActivity } from "@/lib/services/activity";
 import { postExpenseJournal, reverseExpenseJournal } from "@/lib/services/accounting/auto-accounting";
+import { applyPercent, formatCurrency } from "@/lib/money";
 import type { ExpenseFormValues } from "@/lib/validations/expense";
 import type { Prisma, Expense, ExpenseStatus } from "@prisma/client";
 
@@ -109,6 +110,8 @@ export function expenseToFormValues(expense: Expense): ExpenseFormValues {
 
 export async function createExpense(data: ExpenseFormValues, userId?: string) {
   const number = await generateExpenseNumber();
+  const gstAmountPaise = applyPercent(data.baseAmountPaise, data.gstRate);
+  const totalAmountPaise = data.baseAmountPaise + gstAmountPaise;
 
   const expense = await prisma.expense.create({
     data: {
@@ -119,8 +122,8 @@ export async function createExpense(data: ExpenseFormValues, userId?: string) {
       date: new Date(data.date),
       baseAmountPaise: data.baseAmountPaise,
       gstRate: data.gstRate,
-      gstAmountPaise: data.gstAmountPaise,
-      totalAmountPaise: data.totalAmountPaise,
+      gstAmountPaise,
+      totalAmountPaise,
       paymentMethod: data.paymentMethod,
       referenceNumber: data.referenceNumber || null,
       status: data.status,
@@ -142,7 +145,7 @@ export async function createExpense(data: ExpenseFormValues, userId?: string) {
 
   await logActivity({
     type: "expense.created",
-    message: `Expense ${expense.number} recorded for ₹${(expense.totalAmountPaise / 100).toFixed(2)}`,
+    message: `Expense ${expense.number} recorded for ${formatCurrency(expense.totalAmountPaise)}`,
     entityType: "expense",
     entityId: expense.id,
     expenseId: expense.id,
@@ -153,6 +156,9 @@ export async function createExpense(data: ExpenseFormValues, userId?: string) {
 }
 
 export async function updateExpense(id: string, data: ExpenseFormValues) {
+  const gstAmountPaise = applyPercent(data.baseAmountPaise, data.gstRate);
+  const totalAmountPaise = data.baseAmountPaise + gstAmountPaise;
+
   const expense = await prisma.expense.update({
     where: { id },
     data: {
@@ -162,8 +168,8 @@ export async function updateExpense(id: string, data: ExpenseFormValues) {
       date: new Date(data.date),
       baseAmountPaise: data.baseAmountPaise,
       gstRate: data.gstRate,
-      gstAmountPaise: data.gstAmountPaise,
-      totalAmountPaise: data.totalAmountPaise,
+      gstAmountPaise,
+      totalAmountPaise,
       paymentMethod: data.paymentMethod,
       referenceNumber: data.referenceNumber || null,
       status: data.status,

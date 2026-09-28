@@ -1,5 +1,5 @@
 import { prisma, TX_OPTIONS } from "@/lib/prisma";
-import { rupeesToPaise } from "@/lib/money";
+import { rupeesToPaise, formatCurrency } from "@/lib/money";
 import { logActivity } from "@/lib/services/activity";
 import { postPaymentJournal, reversePaymentJournal } from "@/lib/services/accounting/auto-accounting";
 import type { PaymentFormValues } from "@/lib/validations/payment";
@@ -114,7 +114,7 @@ function createPaymentTx(data: PaymentFormValues, amountPaise: number, userId?: 
     const outstandingPaise = invoice.totalPaise - invoice.amountPaidPaise;
     if (amountPaise > outstandingPaise) {
       throw new Error(
-        `Payment amount can't exceed the outstanding balance of ${(outstandingPaise / 100).toFixed(2)}`
+        `Payment amount can't exceed the outstanding balance of ${formatCurrency(outstandingPaise)}`
       );
     }
 
@@ -145,7 +145,7 @@ function createPaymentTx(data: PaymentFormValues, amountPaise: number, userId?: 
     await logActivity(
       {
         type: "payment.recorded",
-        message: `Payment of ${(amountPaise / 100).toFixed(2)} received for invoice ${invoice.number}`,
+        message: `Payment of ${formatCurrency(amountPaise)} received for invoice ${invoice.number}`,
         entityType: "payment",
         entityId: payment.id,
         customerId: payment.customerId,
@@ -214,7 +214,7 @@ function deletePaymentTx(id: string, userId?: string) {
     await logActivity(
       {
         type: "payment.deleted",
-        message: `Payment of ${(payment.amountPaise / 100).toFixed(2)} removed from invoice ${payment.invoice.number}`,
+        message: `Payment of ${formatCurrency(payment.amountPaise)} removed from invoice ${payment.invoice.number}`,
         entityType: "invoice",
         entityId: payment.invoiceId,
         customerId: payment.customerId,

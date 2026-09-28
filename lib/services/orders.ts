@@ -129,7 +129,7 @@ export function orderToFormValues(order: Order & { items: OrderItem[] }): OrderF
     })),
     subtotalPaise: order.subtotalPaise,
     discountPaise: order.discountPaise,
-    taxablePaise: order.subtotalPaise - order.discountPaise,
+    taxablePaise: order.subtotalPaise,
     cgstPaise: 0,
     sgstPaise: 0,
     igstPaise: 0,

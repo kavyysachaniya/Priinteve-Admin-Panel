@@ -16,7 +16,7 @@ export function DocumentTotalsSummary({
 }) {
   return (
     <div className="w-full max-w-xs space-y-2 self-end rounded-lg border bg-card p-4 text-sm">
-      <Row label="Subtotal" value={formatCurrency(subtotalPaise)} />
+      <Row label="Subtotal" value={formatCurrency(subtotalPaise + discountPaise)} />
       {discountPaise > 0 && <Row label="Discount" value={`− ${formatCurrency(discountPaise)}`} muted />}
       <Row label="Tax (GST)" value={formatCurrency(taxPaise)} />
       <div className="flex items-center justify-between gap-3">
