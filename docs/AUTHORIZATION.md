@@ -64,8 +64,7 @@ sequenceDiagram
 - For anything else it calls `getToken({ req, secret: AUTH_SECRET })`, which decrypts the session cookie and checks its expiry. It does not touch the database.
 - No valid token → redirect to `/login?callbackUrl=<path>`. This also applies to API routes, which receive a redirect rather than a 401.
 
-> [!WARNING]
-> `getToken()` is called without `secureCookie`, so it only reads the non-secure cookie name. Over HTTPS, Auth.js names the cookie `__Secure-authjs.session-token`. See [DEPLOYMENT.md — Known blocking issue](./DEPLOYMENT.md#known-blocking-issue-login-loop-over-https).
+Over HTTPS, Auth.js names the cookie `__Secure-authjs.session-token` (the name is also the encryption salt), so `proxy.ts` tries `getToken({ secureCookie: true })` first and falls back to the plain `authjs.session-token` used on `http://localhost`.
 
 ### 2. `auth.ts` `jwt` callback — role and status re-check
 

@@ -26,7 +26,12 @@ export async function proxy(request: NextRequest) {
   // Cryptographically verify the session JWT (signature + expiry) without
   // touching the database, so this stays Edge Runtime-safe while actually
   // authenticating the request instead of trusting cookie presence alone.
-  const token = await getToken({ req: request, secret: process.env.AUTH_SECRET });
+  // Over HTTPS Auth.js names the cookie `__Secure-authjs.session-token` (and uses that name
+  // as the encryption salt), so check the secure name first and fall back to the plain one.
+  const secret = process.env.AUTH_SECRET;
+  const token =
+    (await getToken({ req: request, secret, secureCookie: true })) ??
+    (await getToken({ req: request, secret, secureCookie: false }));
 
   // If authenticated, allow through
   if (token) {

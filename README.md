@@ -102,10 +102,7 @@ npm run build
 npm start
 ```
 
-Set the environment variables above on the host (`NEXTAUTH_URL` = the public URL; on non-Vercel hosts also `AUTH_TRUST_HOST=true`). Run `npm run db:push` against the production database whenever the schema changes.
-
-> [!CAUTION]
-> `proxy.ts` currently can't read the session cookie over HTTPS, which causes a login loop in production. Read [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md#known-blocking-issue-login-loop-over-https) before deploying.
+Production runs on Vercel (project `priinteve-admin-panel`), which deploys every push to `main`. Its build command is `npx prisma db push && next build`, so schema changes are applied during the build. Details: [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md).
 
 ## Documentation
 

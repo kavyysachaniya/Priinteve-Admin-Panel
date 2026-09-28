@@ -1,28 +1,19 @@
 # Deployment
 
-What a production deployment needs. Only what can be verified from the repository is stated as fact; anything else is marked as an assumption.
+What a production deployment needs. Only what can be verified from the repository or the Vercel project settings is stated as fact; anything else is marked as an assumption.
 
 Related: [DEVELOPMENT.md](./DEVELOPMENT.md) · [DATABASE.md](./DATABASE.md) · [AUTHORIZATION.md](./AUTHORIZATION.md) · [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)
 
 ---
 
-## Known blocking issue: login loop over HTTPS
-
-> [!CAUTION]
-> Fix this before deploying to any HTTPS URL.
-
-`proxy.ts` calls `getToken({ req: request, secret: process.env.AUTH_SECRET })` without `secureCookie`. `getToken` then only looks for the cookie `authjs.session-token`. When the app is served over **HTTPS**, Auth.js stores the session in `__Secure-authjs.session-token` instead, and the cookie name is also part of the token's encryption salt.
-
-Result: on an HTTPS deployment, `proxy.ts` never finds a valid token. Every page redirects to `/login`, even right after a successful sign-in. Local development over `http://localhost` is unaffected, which is why local testing doesn't show it.
-
-The fix belongs in `proxy.ts`: read the secure cookie when the request is HTTPS — for example `secureCookie: request.nextUrl.protocol === "https:"`, or try the secure name first and fall back to the plain one. After fixing, remove this section and the matching entry in [TROUBLESHOOTING.md](./TROUBLESHOOTING.md#redirected-to-login-after-signing-in-production).
-
-## What the repository defines
+## Current setup
 
 | Item | Value |
 |---|---|
-| Hosting platform | **Not defined.** There is no `vercel.json`, `vercel.ts`, Dockerfile or CI workflow. `.gitignore` excludes `.vercel`, which suggests Vercel has been used, but nothing else confirms it. |
-| Build command | `npm run build` → `next build` (Turbopack) |
+| Hosting platform | Vercel, project `priinteve-admin-panel` (verified in the Vercel project settings; there is no `vercel.json` or `vercel.ts` in the repo) |
+| Git integration | GitHub `kavyysachaniya/Priinteve-Admin-Panel`; production branch `main`. Every push to `main` deploys to production; other branches create Preview deployments. |
+| Build command (set in Vercel) | `npx prisma db push && next build`. It applies the schema to the database in `DATABASE_URL`/`DIRECT_URL` and regenerates the Prisma client on every build. |
+| Build command (`package.json`) | `npm run build` → `next build` (Turbopack) |
 | Start command | `npm start` → `next start` (port 3000 unless `PORT` is set) |
 | Node.js | ≥ 20.9.0 |
 | Database | PostgreSQL on Neon |
@@ -31,14 +22,14 @@ The fix belongs in `proxy.ts`: read the secure cookie when the request is HTTPS 
 
 ## Environment variables
 
-Set these on the host. Never commit real values; `.env.example` holds placeholders only.
+Set these on the host. Never commit real values; `.env.example` holds placeholders only. On Vercel, Production currently has `DATABASE_URL`, `DIRECT_URL` and `AUTH_SECRET`; Preview has only `DIRECT_URL` and `AUTH_SECRET`.
 
 | Variable | Production value |
 |---|---|
 | `DATABASE_URL` | Neon **pooled** URL with `sslmode=require&connect_timeout=10&connection_limit=10&pool_timeout=10`. **No `pgbouncer=true`.** |
 | `DIRECT_URL` | Neon **direct** URL. Needed wherever you run `prisma db push`. |
 | `AUTH_SECRET` | A strong random secret, different from development. Rotating it signs everyone out. |
-| `NEXTAUTH_URL` | The public HTTPS URL of the app, for example `https://admin.example.com`. |
+| `NEXTAUTH_URL` | The public HTTPS URL of the app. Optional on Vercel, where it isn't currently set (Auth.js uses the request host); set it on other hosts. |
 | `AUTH_TRUST_HOST` | `true` on **non-Vercel** hosts. |
 
 Why `AUTH_TRUST_HOST`: Auth.js v5 trusts the request host only if one of `AUTH_URL`, `AUTH_TRUST_HOST`, `VERCEL` or `CF_PAGES` is set, or `NODE_ENV` isn't `production` (`node_modules/@auth/core/lib/utils/env.js`). `NEXTAUTH_URL` alone does not count. Vercel sets `VERCEL` automatically; other hosts need `AUTH_TRUST_HOST=true` (or `AUTH_URL`), otherwise Auth.js rejects requests with an "UntrustedHost" error.
@@ -55,10 +46,13 @@ Why `AUTH_TRUST_HOST`: Auth.js v5 trusts the request host only if one of `AUTH_U
 
 ## Prisma client generation
 
-`npm run build` does not run `prisma generate`. The client is generated when `@prisma/client` is installed (its `postinstall`) and by `prisma db push`.
+On Vercel the build command runs `prisma db push` first, which also regenerates the Prisma client, so a stale client isn't a concern there. `npm run build` on its own does not run `prisma generate`; the client comes from `@prisma/client`'s install step or from `db push`.
 
-> [!NOTE]
-> Assumption, not verified in this repository: hosts that cache `node_modules` between builds (Vercel does) can skip that install step and ship an out-of-date client after a schema change. If a deploy fails with Prisma type or field errors, run `prisma generate` as part of the build (for example `prisma generate && next build`).
+## Preview deployments
+
+Preview builds (any branch other than `main`) run the same build command, but `DATABASE_URL` is set only for **Production** in Vercel. Preview builds therefore fail with `P1012: Environment variable not found: DATABASE_URL`. That is expected with the current setup.
+
+If you enable previews, don't just copy the production `DATABASE_URL` into Preview: the build's `prisma db push` would then change the production database from a branch. Point Preview at a separate Neon branch instead.
 
 ## Deployment workflow
 
@@ -82,7 +76,7 @@ Why `AUTH_TRUST_HOST`: Auth.js v5 trusts the request host only if one of `AUTH_U
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Every page redirects to `/login` after signing in (HTTPS only) | [Known blocking issue](#known-blocking-issue-login-loop-over-https) | Fix `proxy.ts` |
+| Preview build fails with `P1012 … DATABASE_URL` | `DATABASE_URL` is set only for Production | Expected; see [Preview deployments](#preview-deployments) |
 | Auth error "UntrustedHost" | Non-Vercel host without `AUTH_TRUST_HOST`/`AUTH_URL` | Set `AUTH_TRUST_HOST=true` |
 | Everyone was signed out | `AUTH_SECRET` changed | Expected; keep it stable |
 | Slow pages or "Timed out fetching a new connection from the connection pool" | `pgbouncer=true` in `DATABASE_URL`, or the app and database are far apart | Remove the flag; co-locate regions |

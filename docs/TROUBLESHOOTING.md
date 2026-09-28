@@ -98,10 +98,6 @@ Related: [DEVELOPMENT.md](./DEVELOPMENT.md) · [DEPLOYMENT.md](./DEPLOYMENT.md) 
 
 ## Authentication
 
-### Redirected to `/login` after signing in (production)
-
-**Cause:** the known issue in `proxy.ts` on HTTPS — see [DEPLOYMENT.md](./DEPLOYMENT.md#known-blocking-issue-login-loop-over-https).
-
 ### "UntrustedHost" error from Auth.js
 
 **Cause:** production on a non-Vercel host without `AUTH_TRUST_HOST` or `AUTH_URL`.
