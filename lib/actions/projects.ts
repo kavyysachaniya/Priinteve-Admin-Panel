@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import * as projectService from "@/lib/services/projects";
 import { projectFormSchema, type ProjectFormValues } from "@/lib/validations/project";
 import { flattenZodError, friendlyError, type FormActionResult } from "@/lib/actions/utils";
-import { requireAuth, requirePermission } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
 
 export async function createProjectAction(values: ProjectFormValues): Promise<FormActionResult> {
   const user = await requirePermission("projects:create");

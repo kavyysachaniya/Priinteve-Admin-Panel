@@ -28,10 +28,10 @@ export async function createPaymentAction(values: PaymentFormValues): Promise<Fo
 }
 
 export async function deletePaymentAction(id: string) {
-  await requirePermission("payments:delete");
+  const user = await requirePermission("payments:delete");
   try {
     const payment = await paymentService.getPaymentDetail(id);
-    await paymentService.deletePayment(id);
+    await paymentService.deletePayment(id, user.id);
     revalidatePath("/payments");
     revalidatePath("/invoices");
     if (payment) revalidatePath(`/invoices/${payment.invoiceId}`);

@@ -6,6 +6,44 @@ import type { UserRole } from "@prisma/client";
 
 const USER_RECHECK_INTERVAL_MS = 60_000;
 
+// In-memory brute force protection for login attempts per email
+interface LoginAttempt {
+  count: number;
+  lastAttempt: number;
+  blockedUntil?: number;
+}
+const loginAttempts = new Map<string, LoginAttempt>();
+const MAX_FAILED_ATTEMPTS = 5;
+const BLOCK_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+const ATTEMPT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+
+function recordFailedLogin(email: string) {
+  const now = Date.now();
+  const entry = loginAttempts.get(email);
+  if (!entry || now - entry.lastAttempt > ATTEMPT_WINDOW_MS) {
+    loginAttempts.set(email, { count: 1, lastAttempt: now });
+  } else {
+    entry.count += 1;
+    entry.lastAttempt = now;
+    if (entry.count >= MAX_FAILED_ATTEMPTS) {
+      entry.blockedUntil = now + BLOCK_DURATION_MS;
+    }
+  }
+
+  // Periodic cleanup if map grows
+  if (loginAttempts.size > 1000) {
+    for (const [k, v] of loginAttempts.entries()) {
+      if (now - v.lastAttempt > ATTEMPT_WINDOW_MS && (!v.blockedUntil || v.blockedUntil <= now)) {
+        loginAttempts.delete(k);
+      }
+    }
+  }
+}
+
+function clearFailedLogin(email: string) {
+  loginAttempts.delete(email);
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     Credentials({
@@ -20,6 +58,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const email = String(credentials.email).toLowerCase().trim();
         const password = String(credentials.password);
 
+        // Check brute-force lockout
+        const attempt = loginAttempts.get(email);
+        const now = Date.now();
+        if (attempt?.blockedUntil && attempt.blockedUntil > now) {
+          return null;
+        }
+
         try {
           const user = await prisma.user.findUnique({ where: { email } });
 
@@ -28,13 +73,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           if (!user || !user.passwordHash) {
             // Dummy comparison to prevent timing attacks
             await verifyPassword(password, "$2a$12$dummyhashfordummycomparison.dummydummydummy");
+            recordFailedLogin(email);
             return null;
           }
 
-          if (user.status !== "ACTIVE") return null;
+          if (user.status !== "ACTIVE") {
+            recordFailedLogin(email);
+            return null;
+          }
 
           const valid = await verifyPassword(password, user.passwordHash);
-          if (!valid) return null;
+          if (!valid) {
+            recordFailedLogin(email);
+            return null;
+          }
+
+          clearFailedLogin(email);
 
           // Update lastLoginAt asynchronously (don't block login)
           prisma.user.update({
