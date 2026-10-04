@@ -68,7 +68,7 @@ Internal admin panel for Priinteve (printing, design, digital services): sales (
 
 ## Documents
 
-- Quotation and invoice use one template: `components/documents/document-preview.tsx`. Keep the order header → from/bill-to → items → totals → bottom block (notes/terms, then bank details/footer inside `data-pdf-anchor-bottom`).
+- Quotation and invoice use one template: `components/documents/document-preview.tsx`. Keep the order header → from/bill-to → items → bottom block (totals, then payment conditions/notes/terms, then bank details/footer, all inside `data-pdf-anchor-bottom`).
 - New blocks must be direct children of the container (or of the bottom wrapper) so `lib/pdf/exporter.ts` can break pages between them. Keep `prevent-break` on blocks that must not split in print.
 - Details: `docs/DOCUMENTS.md`.
 

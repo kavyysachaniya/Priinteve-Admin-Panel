@@ -13,6 +13,8 @@ import {
   Trash2,
   Calendar,
   CheckCircle2,
+  CheckCheck,
+  Undo2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -54,6 +56,7 @@ interface TimeEntryData {
   taskDescription?: string | null;
   taskId?: string | null;
   flaggedForReview?: boolean;
+  approvedAt?: Date | string | null;
   createdAt?: Date | string;
   user?: {
     id?: string;
@@ -298,8 +301,48 @@ export function ProjectTimerTab({
     }
   };
 
+  const isAdmin = currentUserRole === "ADMIN";
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const pendingApprovalCount = entries.filter((e) => e.status !== "RUNNING" && e.endedAt && !e.approvedAt).length;
+
+  const setApproval = async (entry: TimeEntryData, approve: boolean) => {
+    setApprovingId(entry.id);
+    try {
+      const res = await fetch(`/api/time-entries/${entry.id}/approve`, { method: approve ? "POST" : "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not update approval");
+      setEntries((prev) =>
+        prev.map((e) => (e.id === entry.id ? { ...e, approvedAt: approve ? new Date().toISOString() : null } : e))
+      );
+      toast.success(approve ? "Time approved — now visible to the client" : "Approval removed — hidden from the client");
+      router.refresh();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Could not update approval");
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
+  const approveAllPending = async () => {
+    setApprovingId("all");
+    try {
+      const res = await fetch(`/api/projects/${projectId}/time-entries/approve`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not approve entries");
+      const stamp = new Date().toISOString();
+      setEntries((prev) => prev.map((e) => (e.status !== "RUNNING" && e.endedAt && !e.approvedAt ? { ...e, approvedAt: stamp } : e)));
+      toast.success(`${data.approved} entr${data.approved === 1 ? "y" : "ies"} approved`);
+      router.refresh();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Could not approve entries");
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
   // Compute time per task for breakdown (Spec 4.5)
   const taskBreakdown = entries.reduce((acc, entry) => {
+    if (entry.status === "RUNNING") return acc;
     const key = entry.taskDescription || entry.notes || "General Project Work";
     acc[key] = (acc[key] || 0) + (entry.durationSeconds || 0);
     return acc;
@@ -358,7 +401,8 @@ export function ProjectTimerTab({
                 <div>
                   <p className="text-xs text-muted-foreground font-medium">Recorded Sessions</p>
                   <p className="text-lg font-bold font-mono tracking-tight text-foreground">
-                    {entries.length} session{entries.length === 1 ? "" : "s"}
+                    {entries.filter((e) => e.status !== "RUNNING").length} session
+                    {entries.filter((e) => e.status !== "RUNNING").length === 1 ? "" : "s"}
                   </p>
                 </div>
               </CardContent>
@@ -396,6 +440,9 @@ export function ProjectTimerTab({
                 <Calendar className="size-4 text-primary" />
                 Recent Work Sessions
               </CardTitle>
+              <p className="text-[11px] text-muted-foreground font-normal">
+                Time appears here once approved by the team.
+              </p>
             </CardHeader>
             <CardContent className="p-0">
               <Table>
@@ -527,6 +574,18 @@ export function ProjectTimerTab({
                 Recorded Sessions ({entries.length})
               </h3>
               <div className="flex items-center gap-2 text-xs">
+                {isAdmin && pendingApprovalCount > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 gap-1.5 text-xs"
+                    onClick={approveAllPending}
+                    disabled={approvingId !== null}
+                  >
+                    {approvingId === "all" ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCheck className="size-3.5" />}
+                    Approve all pending ({pendingApprovalCount})
+                  </Button>
+                )}
                 <span className="text-muted-foreground">Total Time:</span>
                 <span className="font-mono font-bold text-primary">
                   {formatDuration(totalDurationSeconds)}
@@ -545,13 +604,14 @@ export function ProjectTimerTab({
                       <TableHead>Duration</TableHead>
                       <TableHead>Team Member</TableHead>
                       <TableHead>Task / Description</TableHead>
+                      <TableHead>Client View</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {entries.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-8 text-xs text-muted-foreground">
+                        <TableCell colSpan={8} className="text-center py-8 text-xs text-muted-foreground">
                           No time entries recorded yet. Click &quot;Start Timer&quot; to begin.
                         </TableCell>
                       </TableRow>
@@ -619,7 +679,40 @@ export function ProjectTimerTab({
                               {entry.taskDescription || entry.notes || entry.task?.title || "—"}
                             </TableCell>
 
+                            <TableCell className="whitespace-nowrap">
+                              {isRunning ? (
+                                <span className="text-muted-foreground">—</span>
+                              ) : entry.approvedAt ? (
+                                <span className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                                  <CheckCircle2 className="size-3" /> Approved
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                                  Pending
+                                </span>
+                              )}
+                            </TableCell>
+
                             <TableCell className="text-right whitespace-nowrap">
+                              {isAdmin && !isRunning && entry.endedAt && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="mr-1 h-7 gap-1 px-2 text-[11px]"
+                                  onClick={() => setApproval(entry, !entry.approvedAt)}
+                                  disabled={approvingId !== null}
+                                  title={entry.approvedAt ? "Hide from client" : "Approve and show to client"}
+                                >
+                                  {approvingId === entry.id ? (
+                                    <Loader2 className="size-3 animate-spin" />
+                                  ) : entry.approvedAt ? (
+                                    <Undo2 className="size-3" />
+                                  ) : (
+                                    <CheckCircle2 className="size-3" />
+                                  )}
+                                  {entry.approvedAt ? "Unapprove" : "Approve"}
+                                </Button>
+                              )}
                               {canEdit && !isRunning && (
                                 <div className="flex items-center justify-end gap-1">
                                   <Button

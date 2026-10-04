@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { format } from "date-fns";
-import { ShoppingBag, Calendar, CheckCircle2, Truck, Edit, Trash2, ArrowRight } from "lucide-react";
+import { FileText, ShoppingBag, Calendar, CheckCircle2, Truck, Edit, Trash2, ArrowRight } from "lucide-react";
 import { OrderStatusBadge, OrderPriorityBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -59,6 +59,12 @@ export function OrderDetail({ order }: { order: any }) {
               Send to Production
             </Button>
           )}
+
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/orders/${order.id}/document`}>
+              <FileText className="size-3.5 mr-1" /> Print / PDF
+            </Link>
+          </Button>
 
           <Button asChild variant="outline" size="sm">
             <Link href={`/orders/${order.id}/edit`}>

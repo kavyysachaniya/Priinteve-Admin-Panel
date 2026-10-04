@@ -11,12 +11,12 @@ export interface DocumentPreviewItem {
 }
 
 export interface DocumentPreviewData {
-  kind: "Quotation" | "Invoice";
+  kind: "Quotation" | "Invoice" | "Order";
   number: string;
   dateLabel: string;
   date: Date;
-  secondaryDateLabel: string;
-  secondaryDate: Date;
+  secondaryDateLabel?: string;
+  secondaryDate?: Date | null;
   customer: Customer;
   items: DocumentPreviewItem[];
   subtotalPaise: number;
@@ -26,6 +26,8 @@ export interface DocumentPreviewData {
   totalPaise: number;
   notes: string | null;
   terms: string | null;
+  /** Quotation-only payment conditions (e.g. advance and balance). */
+  paymentTerms?: string | null;
   company: CompanySettings;
   /** Invoice-only payment context. */
   amountPaidPaise?: number;

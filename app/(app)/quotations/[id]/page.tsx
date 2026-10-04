@@ -34,6 +34,7 @@ export default async function QuotationDetailPage({ params }: PageProps<"/quotat
     totalPaise: quotation.totalPaise,
     notes: quotation.notes,
     terms: quotation.terms,
+    paymentTerms: quotation.paymentTerms,
     company,
   };
 

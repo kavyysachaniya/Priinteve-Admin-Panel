@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { notFound } from "next/navigation";
 import { getProjectById } from "@/lib/services/projects";
+import { listTasksForBoard } from "@/lib/services/tasks";
 import { listActiveEmployees } from "@/lib/services/users";
 import { requireAuth } from "@/lib/auth/session";
 import { ProjectDetails } from "@/components/projects/project-details";
@@ -30,13 +31,16 @@ export default async function ProjectDetailPage({
     notFound();
   }
 
-  const availableEmployees =
-    sessionUser.role === "ADMIN" ? await listActiveEmployees() : [];
+  const [availableEmployees, boardTasks] = await Promise.all([
+    sessionUser.role === "ADMIN" ? listActiveEmployees() : Promise.resolve([]),
+    listTasksForBoard({ projectId: id }, sessionUser),
+  ]);
 
   return (
     <ProjectDetails
       project={project}
       availableEmployees={availableEmployees}
+      boardTasks={boardTasks}
       sessionUser={sessionUser}
     />
   );

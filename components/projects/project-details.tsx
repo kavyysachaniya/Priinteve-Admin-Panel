@@ -24,14 +24,17 @@ import { ProjectTasksTab } from "@/components/projects/project-tasks-tab";
 import { ProjectTimerTab } from "@/components/projects/project-timer-tab";
 import { formatDate, formatDateTime, formatDuration } from "@/lib/time-format";
 import type { ProjectDetail } from "@/lib/services/projects";
+import type { BoardTask } from "@/lib/services/tasks";
 import type { SessionUser } from "@/lib/auth/session";
 
 export function ProjectDetails({
   project,
   availableEmployees = [],
+  boardTasks = [],
   sessionUser,
 }: {
   project: ProjectDetail;
+  boardTasks?: BoardTask[];
   availableEmployees?: Array<{ id: string; name: string; email: string; role: string }>;
   sessionUser?: SessionUser;
 }) {
@@ -298,13 +301,15 @@ export function ProjectDetails({
 
         {/* Tab 2: Tasks (Spec 4.3 & 7) */}
         <TabsContent value="tasks">
-          <ProjectTasksTab
-            projectId={project.id}
-            tasks={(project.tasks as any) || []}
-            assignedEmployees={assignedList}
-            currentUserId={sessionUser?.id}
-            currentUserRole={sessionUser?.role}
-          />
+          {sessionUser && (
+            <ProjectTasksTab
+              projectId={project.id}
+              projectName={project.name}
+              tasks={boardTasks}
+              currentUserId={sessionUser.id}
+              currentUserRole={sessionUser.role}
+            />
+          )}
         </TabsContent>
 
         {/* Tab 3: Timer (Spec 4.4, 4.5 & 7) */}

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import * as taskService from "@/lib/services/tasks";
-import { taskFormSchema, type TaskFormValues } from "@/lib/validations/task";
+import { moveTaskSchema, taskFormSchema, type MoveTaskValues, type TaskFormValues } from "@/lib/validations/task";
 import { flattenZodError, friendlyError, type FormActionResult } from "@/lib/actions/utils";
 import { requirePermission } from "@/lib/auth/session";
 
@@ -71,6 +71,25 @@ export async function deleteTaskAction(id: string) {
       revalidatePath(`/projects/${task.projectId}`);
     }
     return { success: true, message: "Task deleted" };
+  } catch (err) {
+    return { success: false, message: friendlyError(err) };
+  }
+}
+
+export async function moveTaskAction(id: string, values: MoveTaskValues): Promise<FormActionResult> {
+  const user = await requirePermission("tasks:edit");
+  const parsed = moveTaskSchema.safeParse(values);
+  if (!parsed.success) {
+    return { success: false, message: "Invalid task move." };
+  }
+  try {
+    const task = await taskService.moveTask(id, parsed.data, user);
+    revalidatePath("/tasks");
+    revalidatePath("/planner");
+    if (task.projectId) {
+      revalidatePath(`/projects/${task.projectId}`);
+    }
+    return { success: true, id };
   } catch (err) {
     return { success: false, message: friendlyError(err) };
   }

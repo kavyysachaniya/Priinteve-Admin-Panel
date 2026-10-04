@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { BrandLogo } from "@/components/shared/brand-logo";
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -125,9 +126,7 @@ export default function LoginPage() {
     <div className="w-full max-w-md">
       {/* Logo / Brand */}
       <div className="text-center mb-8">
-        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary text-primary-foreground text-2xl font-bold mb-4">
-          P
-        </div>
+        <BrandLogo className="mb-4 size-14 rounded-2xl" />
         <h1 className="text-2xl font-bold tracking-tight">Priinteve Business OS</h1>
         <p className="text-muted-foreground text-sm mt-1">Sign in to your account</p>
       </div>

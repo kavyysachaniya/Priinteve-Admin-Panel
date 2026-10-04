@@ -69,11 +69,11 @@ Related: [BUSINESS-LOGIC.md](./BUSINESS-LOGIC.md) · [DEVELOPMENT.md](./DEVELOPM
 
 | Model | Purpose | Notes |
 |---|---|---|
-| `Task` | Tasks, optionally linked to a customer, order, quotation, invoice or production job | `dueDate` + `dueTime` (string) |
+| `Task` | Tasks, optionally linked to a customer, order, quotation, invoice, production job or project | `dueDate` + `dueTime` (string); `position` (Float) orders cards within a board column |
 | `CalendarEvent` | Manual calendar events | Optional links to a customer, order or task |
 | `Note` | Notes | Optional links to a customer, order or task; `pinned` |
 | `Project` | Client projects | See [PROJECTS.md](./PROJECTS.md) |
-| `ProjectTimeEntry` | Timer sessions for a project | `status` `RUNNING`/`PAUSED`/`COMPLETED`, `durationSeconds` |
+| `ProjectTimeEntry` | Timer sessions for a project | `status` `RUNNING`/`PAUSED`/`COMPLETED`, `durationSeconds`; `approvedAt` / `approvedById` (clients see approved entries only) |
 
 ### Expenses and accounting
 
@@ -155,7 +155,8 @@ Besides the unique constraints, the schema indexes the columns used for filterin
 | `ProductionJob` | `orderId`, `customerId`, `status` |
 | `Delivery` | `customerId`, `status` |
 | `Payment` | `customerId`, `invoiceId`, `paymentAccountId`, `paymentDate` |
-| `Task` | `status`, `priority`, `dueDate`, `customerId` |
+| `Task` | `status`, `priority`, `dueDate`, `customerId`, `projectId`, `assignedToId`, `(status, position)` |
+| `ProjectTimeEntry` | `projectId`, `userId`, `taskId`, `(projectId, startedAt)`, `(userId, startedAt)`, `(projectId, approvedAt)`; plus the partial unique index described in [PROJECTS.md](./PROJECTS.md#one-active-timer-per-user-database-index) |
 | `CalendarEvent` | `startDate`, `customerId`, `orderId`, `taskId` |
 | `Note` | `pinned`, `customerId`, `orderId`, `taskId` |
 | `Project` | `status`, `priority`, `customerId`, `assignedToId`, `name` |

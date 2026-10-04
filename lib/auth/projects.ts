@@ -143,6 +143,7 @@ export function toClientProjectDto(project: {
     endedAt: Date | string | null;
     durationSeconds: number;
     status: string;
+    approvedAt?: Date | string | null;
     taskDescription?: string | null;
     notes?: string | null;
     taskId?: string | null;
@@ -162,16 +163,18 @@ export function toClientProjectDto(project: {
     const employeeName = entry.user?.name || "Team Member";
     const taskDesc = entry.taskDescription || entry.notes || (entry.task?.title ?? "General work");
 
-    let sessionSeconds = entry.durationSeconds || 0;
     if (isRunning) {
-      const started = new Date(entry.startedAt).getTime();
-      sessionSeconds = Math.max(0, Math.floor((now - started) / 1000));
+      // Live indicator only: running time never counts toward client totals until approved.
       activeWorkers.push({
         employeeName,
         taskDescription: taskDesc,
         startedAt: new Date(entry.startedAt).toISOString(),
       });
+      continue;
     }
+
+    if (!entry.approvedAt) continue;
+    const sessionSeconds = entry.durationSeconds || 0;
 
     totalDurationSeconds += sessionSeconds;
 
@@ -197,7 +200,7 @@ export function toClientProjectDto(project: {
   const progressPercentage = total > 0 ? Math.round((completed / total) * 100) : 0;
 
   const recentTimeEntries = timeEntries
-    .filter((e) => e.status !== "RUNNING" && e.endedAt)
+    .filter((e) => e.status !== "RUNNING" && e.endedAt && e.approvedAt)
     .slice(0, 20)
     .map((e) => ({
       id: e.id,

@@ -75,10 +75,10 @@ Source: `lib/services/quotations.ts`.
 
 - **Create:** status `DRAFT`, number `QTN-YYYY-NNNN`. Terms are whatever the form contains; the Settings "Default Quotation Terms" are not applied anywhere.
 - **Form defaults** (`lib/validations/quotation.ts`, `document-item.ts`): issue date today, valid for 15 days, new lines at 18% GST. These are hard-coded; `CompanySettings.defaultValidityDays` is not used.
-- **Validation:** at least one line; quantity > 0; rate ≥ 0; discount 0–100%; GST 0–100%; `validUntil` on or after `issueDate`; notes and terms up to 2,000 characters.
+- **Validation:** at least one line; quantity > 0; rate ≥ 0; discount 0–100%; GST 0–100%; `validUntil` on or after `issueDate`; notes and terms up to 2,000 characters; payment conditions up to 1,000.
 - **Edit:** allowed in every status except `CONVERTED`. Editing replaces all lines and recomputes totals.
 - **Delete:** only `DRAFT`.
-- **Duplicate:** creates a new `DRAFT` with today's date, validity 15 days, and the same customer, notes, terms, lines and totals.
+- **Duplicate:** creates a new `DRAFT` with today's date, validity 15 days, and the same customer, notes, terms, payment conditions, lines and totals.
 
 ## Quotation → Invoice conversion
 
@@ -277,6 +277,10 @@ Sources: `lib/services/accounting/*.ts`.
 ## Tasks, notes and calendar
 
 - **Tasks:** statuses `TODO`, `IN_PROGRESS`, `COMPLETED`, `CANCELLED`. The quick toggle switches between `COMPLETED` and `TODO`. The list page has a status filter; the service and URL also accept `dueDate=today|overdue|upcoming|YYYY-MM-DD`.
+  - **Board:** `/tasks` shows a drag-and-drop board by default. `moveTask()` sets the status and a fractional `position` midway between the neighbouring cards, renumbering the column when positions collide. Clients can move only tasks they created; employees need access to the project (or be the assignee or creator of a project-less task).
+  - **Assignees and tags:** for a task in a project, the assignee and tagged people must be an active admin, an employee assigned to the project, or a client user linked to the project's customer (`listAssignableUsers()`). Anyone else is rejected on the server.
+  - **Deadline:** `dueDate` plus an optional `dueTime`. A card is overdue when its date has passed and it isn't `COMPLETED` or `CANCELLED`.
+  - **Time approval:** time entries are visible to clients only after an admin approves them; editing an approved entry clears the approval. See [PROJECTS.md](./PROJECTS.md#time-approval).
 - **Notes:** can be pinned; the planner shows up to 5 pinned notes.
 - **Calendar view** combines manual events, tasks with due dates, delivery dates, production due dates, and due dates of invoices not `PAID`.
 - **iCal feed** (`/api/calendar/feed`): events, tasks, deliveries and production due dates from 2 months ago to 6 months ahead. Times are written with a `Z` (UTC) suffix although they were entered as local times — see [MODULES.md](./MODULES.md#calendar).

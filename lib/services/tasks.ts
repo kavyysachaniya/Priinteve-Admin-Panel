@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { prisma, TX_OPTIONS } from "@/lib/prisma";
 import { logActivity } from "@/lib/services/activity";
 import { createNotification } from "@/lib/services/notifications";
 import { canAccessProject } from "@/lib/auth/projects";
@@ -7,6 +7,41 @@ import type { TaskFormValues } from "@/lib/validations/task";
 import type { Prisma, Task, TaskPriority, TaskStatus } from "@prisma/client";
 
 const PAGE_SIZE = 15;
+
+/** Active users who can be assigned to / tagged on a project's tasks: admins, assigned employees, and the project's client users. */
+export async function listAssignableUsers(projectId: string) {
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: {
+      customerId: true,
+      assignedToId: true,
+      assignments: { select: { employeeId: true } },
+    },
+  });
+  if (!project) return [];
+
+  const employeeIds = project.assignments.map((a) => a.employeeId);
+  if (project.assignedToId) employeeIds.push(project.assignedToId);
+
+  return prisma.user.findMany({
+    where: {
+      status: "ACTIVE",
+      OR: [
+        { role: "ADMIN" },
+        { id: { in: employeeIds } },
+        ...(project.customerId ? [{ role: "CLIENT" as const, customerId: project.customerId }] : []),
+      ],
+    },
+    select: { id: true, name: true, role: true },
+    orderBy: { name: "asc" },
+  });
+}
+
+async function assertAssignable(projectId: string, userIds: string[], message: string) {
+  if (userIds.length === 0) return;
+  const allowed = new Set((await listAssignableUsers(projectId)).map((u) => u.id));
+  if (userIds.some((id) => !allowed.has(id))) throw new Error(message);
+}
 
 export interface ListTasksParams {
   q?: string;
@@ -36,101 +71,102 @@ export async function listTasksForPicker(projectId?: string) {
   });
 }
 
+function buildTaskWhere(params: ListTasksParams, user?: SessionUser): Prisma.TaskWhereInput | null {
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+  let dueDateWhere: Prisma.DateTimeFilter | undefined;
+  if (params.dueDate === "today") {
+    dueDateWhere = { gte: todayStart, lte: todayEnd };
+  } else if (params.dueDate === "overdue") {
+    dueDateWhere = { lt: todayStart };
+  } else if (params.dueDate === "upcoming") {
+    dueDateWhere = { gt: todayEnd };
+  } else if (params.dueDate && params.dueDate.length === 10) {
+    const d = new Date(params.dueDate);
+    const start = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+    dueDateWhere = { gte: start, lte: end };
+  }
+
+  const where: Prisma.TaskWhereInput = {
+    ...(params.status ? { status: params.status } : {}),
+    ...(params.priority ? { priority: params.priority } : {}),
+    ...(dueDateWhere ? { dueDate: dueDateWhere } : {}),
+    ...(params.customerId ? { customerId: params.customerId } : {}),
+    ...(params.orderId ? { orderId: params.orderId } : {}),
+    ...(params.invoiceId ? { invoiceId: params.invoiceId } : {}),
+    ...(params.projectId ? { projectId: params.projectId } : {}),
+    ...(params.q
+      ? {
+          OR: [
+            { title: { contains: params.q, mode: "insensitive" } },
+            { description: { contains: params.q, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
+
+  // Role-based visibility scoping
+  if (user?.role === "CLIENT") {
+    if (!user.customerId) return null;
+    where.project = { customerId: user.customerId };
+  } else if (user?.role === "EMPLOYEE") {
+    if (params.assignedToMe) {
+      where.assignedToId = user.id;
+    } else if (params.taggedMe) {
+      where.mentions = { some: { employeeId: user.id } };
+    } else if (!params.projectId) {
+      // General employee view: tasks in assigned projects OR assigned to me OR tagged me
+      where.OR = [
+        { project: { assignments: { some: { employeeId: user.id } } } },
+        { project: { assignedToId: user.id } },
+        { assignedToId: user.id },
+        { mentions: { some: { employeeId: user.id } } },
+      ];
+    }
+  } else {
+    // ADMIN
+    if (params.assignedToMe && user) {
+      where.assignedToId = user.id;
+    } else if (params.taggedMe && user) {
+      where.mentions = { some: { employeeId: user.id } };
+    } else if (params.assignedToId) {
+      where.assignedToId = params.assignedToId;
+    }
+  }
+
+  return where;
+}
+
+const TASK_LIST_INCLUDE = {
+  assignedTo: { select: { id: true, name: true, email: true } },
+  createdBy: { select: { id: true, name: true } },
+  customer: { select: { id: true, name: true } },
+  order: { select: { id: true, number: true } },
+  project: { select: { id: true, name: true, customerId: true } },
+  mentions: {
+    include: {
+      employee: { select: { id: true, name: true } },
+      taggedBy: { select: { id: true, name: true } },
+    },
+  },
+} satisfies Prisma.TaskInclude;
+
 export async function listTasks(params: ListTasksParams, user?: SessionUser) {
   try {
     const page = Math.max(1, params.page ?? 1);
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-
-    let dueDateWhere: Prisma.DateTimeFilter | undefined;
-    if (params.dueDate === "today") {
-      dueDateWhere = { gte: todayStart, lte: todayEnd };
-    } else if (params.dueDate === "overdue") {
-      dueDateWhere = { lt: todayStart };
-    } else if (params.dueDate === "upcoming") {
-      dueDateWhere = { gt: todayEnd };
-    } else if (params.dueDate && params.dueDate.length === 10) {
-      const d = new Date(params.dueDate);
-      const start = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-      const end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
-      dueDateWhere = { gte: start, lte: end };
-    }
-
-    const where: Prisma.TaskWhereInput = {
-      ...(params.status ? { status: params.status } : {}),
-      ...(params.priority ? { priority: params.priority } : {}),
-      ...(dueDateWhere ? { dueDate: dueDateWhere } : {}),
-      ...(params.customerId ? { customerId: params.customerId } : {}),
-      ...(params.orderId ? { orderId: params.orderId } : {}),
-      ...(params.invoiceId ? { invoiceId: params.invoiceId } : {}),
-      ...(params.projectId ? { projectId: params.projectId } : {}),
-      ...(params.q
-        ? {
-            OR: [
-              { title: { contains: params.q, mode: "insensitive" } },
-              { description: { contains: params.q, mode: "insensitive" } },
-            ],
-          }
-        : {}),
-    };
-
-    // Role-based visibility scoping
-    if (user?.role === "CLIENT") {
-      if (!user.customerId) {
-        return { tasks: [], total: 0, page: 1, pageSize: PAGE_SIZE };
-      }
-      where.project = {
-        customerId: user.customerId,
-      };
-    } else if (user?.role === "EMPLOYEE") {
-      if (params.assignedToMe) {
-        where.assignedToId = user.id;
-      } else if (params.taggedMe) {
-        where.mentions = { some: { employeeId: user.id } };
-      } else if (!params.projectId) {
-        // General employee view: tasks in assigned projects OR assigned to me OR tagged me
-        where.OR = [
-          { project: { assignments: { some: { employeeId: user.id } } } },
-          { project: { assignedToId: user.id } },
-          { assignedToId: user.id },
-          { mentions: { some: { employeeId: user.id } } },
-        ];
-      }
-    } else {
-      // ADMIN
-      if (params.assignedToMe && user) {
-        where.assignedToId = user.id;
-      } else if (params.taggedMe && user) {
-        where.mentions = { some: { employeeId: user.id } };
-      } else if (params.assignedToId) {
-        where.assignedToId = params.assignedToId;
-      }
-    }
+    const where = buildTaskWhere(params, user);
+    if (!where) return { tasks: [], total: 0, page: 1, pageSize: PAGE_SIZE };
 
     const [tasks, total] = await Promise.all([
       prisma.task.findMany({
         where,
-        orderBy: [
-          { status: "asc" },
-          { dueDate: "asc" },
-          { priority: "desc" },
-        ],
+        orderBy: [{ status: "asc" }, { dueDate: "asc" }, { priority: "desc" }],
         skip: (page - 1) * PAGE_SIZE,
         take: PAGE_SIZE,
-        include: {
-          assignedTo: { select: { id: true, name: true, email: true } },
-          createdBy: { select: { id: true, name: true } },
-          customer: { select: { id: true, name: true } },
-          order: { select: { id: true, number: true } },
-          project: { select: { id: true, name: true, customerId: true } },
-          mentions: {
-            include: {
-              employee: { select: { id: true, name: true } },
-              taggedBy: { select: { id: true, name: true } },
-            },
-          },
-        },
+        include: TASK_LIST_INCLUDE,
       }),
       prisma.task.count({ where }),
     ]);
@@ -141,6 +177,36 @@ export async function listTasks(params: ListTasksParams, user?: SessionUser) {
     return { tasks: [], total: 0, page: 1, pageSize: PAGE_SIZE };
   }
 }
+
+const BOARD_INCLUDE = {
+  assignedTo: { select: { id: true, name: true, role: true } },
+  createdBy: { select: { id: true, name: true } },
+  project: { select: { id: true, name: true, customerId: true } },
+  mentions: { include: { employee: { select: { id: true, name: true } } } },
+  timeEntries: {
+    where: { endedAt: null },
+    select: { id: true, userId: true, startedAt: true, user: { select: { name: true } } },
+  },
+} satisfies Prisma.TaskInclude;
+
+/** Unpaginated tasks for the kanban board, ordered by manual position. Exposes display names only (no emails). */
+export async function listTasksForBoard(params: ListTasksParams, user?: SessionUser) {
+  try {
+    const where = buildTaskWhere(params, user);
+    if (!where) return [];
+    return await prisma.task.findMany({
+      where,
+      orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+      take: 500,
+      include: BOARD_INCLUDE,
+    });
+  } catch (err) {
+    console.error("Error in listTasksForBoard:", err);
+    return [];
+  }
+}
+
+export type BoardTask = Awaited<ReturnType<typeof listTasksForBoard>>[number];
 
 export type TaskListItem = Prisma.TaskGetPayload<{
   include: {
@@ -261,27 +327,16 @@ export async function createTask(data: TaskFormValues, user?: SessionUser) {
       throw new Error("You do not have permission to create tasks in this project.");
     }
 
-    // Spec 4.3: Only employees assigned to that project are selectable as assignee
-    if (assigneeId) {
-      const isAssigned =
-        project.assignments.some((a) => a.employeeId === assigneeId) ||
-        project.assignedToId === assigneeId;
-      if (!isAssigned) {
-        throw new Error("Task assignee must be an employee assigned to this project.");
-      }
-    }
-
-    // Spec 4.3: Only employees assigned to that project are selectable in mentions
-    if (data.mentionUserIds && data.mentionUserIds.length > 0) {
-      for (const uid of data.mentionUserIds) {
-        const isAssigned =
-          project.assignments.some((a) => a.employeeId === uid) ||
-          project.assignedToId === uid;
-        if (!isAssigned) {
-          throw new Error("Tagged team members must be assigned to this project.");
-        }
-      }
-    }
+    await assertAssignable(
+      targetProjectId,
+      assigneeId ? [assigneeId] : [],
+      "Task assignee must be an admin, an employee assigned to this project, or this project's client."
+    );
+    await assertAssignable(
+      targetProjectId,
+      data.mentionUserIds ?? [],
+      "Tagged people must be an admin, an employee assigned to this project, or this project's client."
+    );
   }
 
   const task = await prisma.task.create({
@@ -411,25 +466,16 @@ export async function updateTask(id: string, data: TaskFormValues, user?: Sessio
         throw new Error("You do not have access to this project.");
       }
 
-      if (assigneeId) {
-        const isAssigned =
-          project.assignments.some((a) => a.employeeId === assigneeId) ||
-          project.assignedToId === assigneeId;
-        if (!isAssigned) {
-          throw new Error("Task assignee must be an employee assigned to this project.");
-        }
-      }
-
-      if (data.mentionUserIds && data.mentionUserIds.length > 0) {
-        for (const uid of data.mentionUserIds) {
-          const isAssigned =
-            project.assignments.some((a) => a.employeeId === uid) ||
-            project.assignedToId === uid;
-          if (!isAssigned) {
-            throw new Error("Tagged team members must be assigned to this project.");
-          }
-        }
-      }
+      await assertAssignable(
+        targetProjectId,
+        assigneeId ? [assigneeId] : [],
+        "Task assignee must be an admin, an employee assigned to this project, or this project's client."
+      );
+      await assertAssignable(
+        targetProjectId,
+        data.mentionUserIds ?? [],
+        "Tagged people must be an admin, an employee assigned to this project, or this project's client."
+      );
     }
   }
 
@@ -518,6 +564,89 @@ export async function updateTask(id: string, data: TaskFormValues, user?: Sessio
   });
 
   return task;
+}
+
+export interface MoveTaskInput {
+  status: TaskStatus;
+  /** Task that should sit directly above the moved task in the target column. */
+  aboveId?: string | null;
+  /** Task that should sit directly below the moved task in the target column. */
+  belowId?: string | null;
+}
+
+export async function moveTask(id: string, input: MoveTaskInput, user?: SessionUser) {
+  const existing = await prisma.task.findUnique({
+    where: { id },
+    include: { project: { include: { assignments: { select: { employeeId: true } } } } },
+  });
+  if (!existing) throw new Error("Task not found");
+
+  if (user?.role === "CLIENT") {
+    if (existing.createdById !== user.id) {
+      throw new Error("Clients can only move tasks they created themselves.");
+    }
+  } else if (user?.role === "EMPLOYEE") {
+    const hasAccess = existing.project
+      ? canAccessProject(user, existing.project)
+      : existing.assignedToId === user.id || existing.createdById === user.id;
+    if (!hasAccess) throw new Error("You do not have access to this task.");
+  }
+
+  const neighbours = async () => {
+    const [above, below] = await Promise.all([
+      input.aboveId && input.aboveId !== id
+        ? prisma.task.findFirst({ where: { id: input.aboveId, status: input.status }, select: { position: true } })
+        : null,
+      input.belowId && input.belowId !== id
+        ? prisma.task.findFirst({ where: { id: input.belowId, status: input.status }, select: { position: true } })
+        : null,
+    ]);
+    return { above: above?.position ?? null, below: below?.position ?? null };
+  };
+
+  let { above, below } = await neighbours();
+  if (above !== null && below !== null && below - above < 1e-6) {
+    const column = await prisma.task.findMany({
+      where: { status: input.status, id: { not: id } },
+      orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+      select: { id: true },
+    });
+    await prisma.$transaction(async (tx) => {
+      for (const [i, t] of column.entries()) {
+        await tx.task.update({ where: { id: t.id }, data: { position: (i + 1) * 1000 } });
+      }
+    }, TX_OPTIONS);
+    ({ above, below } = await neighbours());
+  }
+
+  const position =
+    above !== null && below !== null
+      ? (above + below) / 2
+      : above !== null
+        ? above + 1000
+        : below !== null
+          ? below - 1000
+          : 0;
+
+  const updated = await prisma.task.update({
+    where: { id },
+    data: { status: input.status, position },
+  });
+
+  if (existing.status !== input.status) {
+    await logActivity({
+      type: "task.status_changed",
+      message: `Task "${updated.title}" moved to ${input.status}`,
+      entityType: "task",
+      entityId: updated.id,
+      projectId: updated.projectId ?? undefined,
+      customerId: updated.customerId ?? undefined,
+      orderId: updated.orderId ?? undefined,
+      userId: user?.id,
+    });
+  }
+
+  return updated;
 }
 
 export async function toggleTaskStatus(id: string, user?: SessionUser) {

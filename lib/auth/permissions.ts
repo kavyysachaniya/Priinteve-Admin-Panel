@@ -82,6 +82,7 @@ export const PERMISSIONS = {
   "projects:edit": "Edit projects",
   "projects:delete": "Delete projects",
   "projects:timer": "Control project timer",
+  "projects:approve_time": "Approve time entries for client visibility",
   // Settings
   "settings:view": "View settings",
   "settings:edit": "Edit settings",

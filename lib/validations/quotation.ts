@@ -10,6 +10,7 @@ export const quotationFormSchema = z
     validUntil: dateString,
     notes: z.string().trim().max(2000).optional().or(z.literal("")),
     terms: z.string().trim().max(2000).optional().or(z.literal("")),
+    paymentTerms: z.string().trim().max(1000).optional().or(z.literal("")),
     shippingCharge: z.coerce.number().min(0, "Can't be negative"),
     items: z.array(documentItemSchema).min(1, "Add at least one item"),
   })
@@ -30,6 +31,7 @@ export function quotationFormDefaults(overrides?: Partial<QuotationFormValues>):
     validUntil: validUntil.toISOString().slice(0, 10),
     notes: "",
     terms: "",
+    paymentTerms: "",
     shippingCharge: 0,
     items: [],
     ...overrides,

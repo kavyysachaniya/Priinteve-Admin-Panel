@@ -44,3 +44,11 @@ export function taskFormDefaults(overrides?: Partial<TaskFormValues>): TaskFormV
     ...overrides,
   };
 }
+
+export const moveTaskSchema = z.object({
+  status: z.enum(["TODO", "IN_PROGRESS", "COMPLETED", "CANCELLED"]),
+  aboveId: z.string().min(1).nullable().optional(),
+  belowId: z.string().min(1).nullable().optional(),
+});
+
+export type MoveTaskValues = z.infer<typeof moveTaskSchema>;

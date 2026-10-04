@@ -128,7 +128,7 @@ export function computeProjectTimerMetrics(project: {
     taskId?: string | null;
     notes?: string | null;
   }>;
-}) {
+}, options: { approvedOnly?: boolean } = {}) {
   const now = Date.now();
   let totalDurationSeconds = 0;
   let runningEntry: (typeof project.timeEntries)[0] | null = null;
@@ -143,7 +143,7 @@ export function computeProjectTimerMetrics(project: {
       runningEntry = entry;
       const startedTime = new Date(entry.startedAt).getTime();
       const currentSessionElapsed = Math.max(0, Math.floor((now - startedTime) / 1000));
-      totalDurationSeconds += currentSessionElapsed;
+      if (!options.approvedOnly) totalDurationSeconds += currentSessionElapsed;
     } else {
       totalDurationSeconds += entry.durationSeconds || 0;
     }
@@ -175,6 +175,23 @@ export function computeProjectTimerMetrics(project: {
     activeTimer,
     timerStatus,
   };
+}
+
+/** Clients only see approved time (plus the live running entry, which never counts toward totals). */
+function visibleTimeEntries<T extends { status: TimeEntryStatus; approvedAt: Date | null }>(
+  entries: T[],
+  user?: SessionUser
+): T[] {
+  if (user?.role !== "CLIENT") return entries;
+  return entries.filter((e) => e.status === "RUNNING" || e.approvedAt !== null);
+}
+
+function withClientAwareMetrics<
+  P extends { status: ProjectStatus; timeEntries: Array<{ id: string; startedAt: Date; endedAt: Date | null; durationSeconds: number; status: TimeEntryStatus; approvedAt: Date | null }> },
+>(project: P, user?: SessionUser) {
+  const timeEntries = visibleTimeEntries(project.timeEntries, user);
+  const metrics = computeProjectTimerMetrics({ ...project, timeEntries }, { approvedOnly: user?.role === "CLIENT" });
+  return { ...project, timeEntries, ...metrics };
 }
 
 export async function listProjects(params: ListProjectsParams = {}, user?: SessionUser) {
@@ -295,13 +312,7 @@ export async function listProjects(params: ListProjectsParams = {}, user?: Sessi
     const byId = new Map(pageProjectsRaw.map((p) => [p.id, p]));
     const orderedRaw = pageIds.map((id) => byId.get(id)).filter((p): p is (typeof pageProjectsRaw)[number] => Boolean(p));
 
-    const projects = orderedRaw.map((p) => {
-      const metrics = computeProjectTimerMetrics(p);
-      return {
-        ...p,
-        ...metrics,
-      };
-    });
+    const projects = orderedRaw.map((p) => withClientAwareMetrics(p, user));
 
     return {
       projects,
@@ -339,13 +350,7 @@ export async function listProjects(params: ListProjectsParams = {}, user?: Sessi
     prisma.project.count({ where }),
   ]);
 
-  const projects = projectsRaw.map((p) => {
-    const metrics = computeProjectTimerMetrics(p);
-    return {
-      ...p,
-      ...metrics,
-    };
-  });
+  const projects = projectsRaw.map((p) => withClientAwareMetrics(p, user));
 
   return {
     projects,
@@ -407,12 +412,7 @@ export async function getProjectById(id: string, user?: SessionUser): Promise<Pr
     }
   }
 
-  const metrics = computeProjectTimerMetrics(project);
-
-  return {
-    ...project,
-    ...metrics,
-  };
+  return withClientAwareMetrics(project, user);
 }
 
 export async function getProjectStats(user?: SessionUser) {
@@ -1338,6 +1338,8 @@ export async function updateTimeEntry(
       endedAt,
       durationSeconds,
       flaggedForReview: isFlagged,
+      approvedAt: null,
+      approvedById: null,
       ...(values.taskDescription ? { taskDescription: values.taskDescription, notes: values.taskDescription } : {}),
     },
   });
@@ -1410,7 +1412,7 @@ export async function listProjectTimeEntries(projectId: string, user?: SessionUs
   }
 
   const entries = await prisma.projectTimeEntry.findMany({
-    where: { projectId },
+    where: { projectId, ...(user?.role === "CLIENT" ? { approvedAt: { not: null } } : {}) },
     orderBy: { startedAt: "desc" },
     include: {
       user: { select: { id: true, name: true, email: true } },
@@ -1432,4 +1434,69 @@ export async function listProjectTimeEntries(projectId: string, user?: SessionUs
   }
 
   return entries;
+}
+
+// ---------------------------------------------------------------------------
+// Time approval (clients only see approved time)
+// ---------------------------------------------------------------------------
+
+function assertCanApproveTime(user: SessionUser) {
+  if (user.role !== "ADMIN") throw new Error("Only an admin can approve time entries.");
+}
+
+export async function approveTimeEntry(id: string, user: SessionUser) {
+  assertCanApproveTime(user);
+  const entry = await prisma.projectTimeEntry.findUnique({ where: { id } });
+  if (!entry) throw new Error("Time entry not found");
+  if (!entry.endedAt || entry.status === "RUNNING") {
+    throw new Error("Stop the timer before approving this entry.");
+  }
+
+  const updated = await prisma.projectTimeEntry.update({
+    where: { id },
+    data: { approvedAt: new Date(), approvedById: user.id },
+  });
+
+  logActivity({
+    type: "TIME_ENTRY_APPROVED",
+    message: `Time entry approved (${entry.durationSeconds}s).`,
+    entityType: "project",
+    entityId: entry.projectId,
+    projectId: entry.projectId,
+    userId: user.id,
+  }).catch(() => {});
+
+  return updated;
+}
+
+export async function unapproveTimeEntry(id: string, user: SessionUser) {
+  assertCanApproveTime(user);
+  const entry = await prisma.projectTimeEntry.findUnique({ where: { id } });
+  if (!entry) throw new Error("Time entry not found");
+
+  return prisma.projectTimeEntry.update({
+    where: { id },
+    data: { approvedAt: null, approvedById: null },
+  });
+}
+
+export async function approveAllCompletedEntries(projectId: string, user: SessionUser) {
+  assertCanApproveTime(user);
+  const result = await prisma.projectTimeEntry.updateMany({
+    where: { projectId, endedAt: { not: null }, approvedAt: null, status: { not: "RUNNING" } },
+    data: { approvedAt: new Date(), approvedById: user.id },
+  });
+
+  if (result.count > 0) {
+    logActivity({
+      type: "TIME_ENTRY_APPROVED",
+      message: `${result.count} time entr${result.count === 1 ? "y" : "ies"} approved.`,
+      entityType: "project",
+      entityId: projectId,
+      projectId,
+      userId: user.id,
+    }).catch(() => {});
+  }
+
+  return result.count;
 }

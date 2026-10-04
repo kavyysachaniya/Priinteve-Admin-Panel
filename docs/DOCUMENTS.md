@@ -1,6 +1,6 @@
-# Quotation and Invoice Documents
+# Quotation, Invoice and Order Documents
 
-How the printable A4 quotation and invoice are built, printed and exported to PDF.
+How the printable A4 quotation, invoice and order are built, printed and exported to PDF.
 
 Related: [ARCHITECTURE.md](./ARCHITECTURE.md) · [BUSINESS-LOGIC.md](./BUSINESS-LOGIC.md) · [TROUBLESHOOTING.md](./TROUBLESHOOTING.md#documents-and-pdf)
 
@@ -12,8 +12,9 @@ Related: [ARCHITECTURE.md](./ARCHITECTURE.md) · [BUSINESS-LOGIC.md](./BUSINESS-
 |---|---|---|---|
 | `/quotations/[id]` | `DocumentPreview` | No button — the browser's own print (Ctrl+P / ⌘P) uses the same print CSS | No |
 | `/invoices/[id]` | `DocumentPreview` | **Print** button (`components/documents/print-button.tsx`) | **Download PDF** button (`components/documents/download-pdf-button.tsx`) |
+| `/orders/[id]/document` | `DocumentPreview` (`kind: "Order"`) | **Print** button | **Download PDF** button. Opened from "Print / PDF" on the order page. The second date line (Expected Completion) is shown only when the order has one, and there is no terms text. |
 
-Both pages build a `DocumentPreviewData` object (`lib/types/document.ts`) on the server and render `<DocumentPreview doc={doc} />`. Only the data differs; the layout is shared.
+Each page builds a `DocumentPreviewData` object (`lib/types/document.ts`) on the server and render `<DocumentPreview doc={doc} />`. Only the data differs; the layout is shared.
 
 ## Document order
 
@@ -22,10 +23,10 @@ The template (`components/documents/document-preview.tsx`) always renders these 
 1. **Header** — letterhead on the left, document title and number on the right.
 2. **From / Bill To** — company details and customer details in two columns.
 3. **Items table** — one row per line item.
-4. **Totals** — right-aligned summary.
-5. **Bottom block**, pinned to the bottom of the page:
-   1. **Notes** and **Terms & Conditions** (side by side);
-   2. **Bank Details** and the thank-you line (footer).
+4. **Bottom block**, pinned to the bottom of the page:
+   1. **Totals** — right-aligned summary, always last above the conditions and footer;
+   2. **Payment Conditions** (quotation), **Notes** and **Terms & Conditions**;
+   3. **Bank Details** and the thank-you line (footer).
 
 The bottom block is wrapped in `<div data-pdf-anchor-bottom className="mt-auto">`. The page container is a flex column with a minimum height of one A4 page, so on a short document the block sits at the bottom of the page. On a long document it follows the totals on the last page.
 
@@ -33,12 +34,12 @@ The bottom block is wrapped in `<div data-pdf-anchor-bottom className="mt-auto">
 
 | Section | Component | Content |
 |---|---|---|
-| Header | `document-header.tsx` | A dark square with the letter **P** (static — `CompanySettings.logoUrl` is not used); company `name` and `tagline`; the title (`QUOTATION` / `INVOICE`); the number; two dates — Issue Date + Valid Until (quotation) or Invoice Date + Due Date (invoice) |
+| Header | `document-header.tsx` | The bird logo (`brand-logo.tsx`: `company.logoUrl`, else `/Logo.png`); company `name` and `tagline`; the title (`QUOTATION` / `INVOICE` / `ORDER`); the number; dates — Issue Date + Valid Until (quotation), Invoice Date + Due Date (invoice) or Order Date + Expected Completion (order) |
 | From | `company-details.tsx` | Company name, address lines, city/state/pincode, phone, email, GSTIN — each only if set |
 | Bill To | `customer-details.tsx` | Customer name, "Attn:" contact person (business customers only), billing address, city/state/pincode, phone, email, GSTIN |
 | Items | `document-items-table.tsx` | Columns: `#`, Item (name + optional description), Qty, Rate, Disc. (`—` when 0), GST %, Amount (line total incl. GST) |
 | Totals | `document-totals.tsx` | Subtotal; Discount (only if > 0); Tax (GST); Shipping / Other (only if > 0); **Grand Total**. Invoices also show Amount Paid and **Balance Due**. |
-| Notes / Terms | `terms-section.tsx` | The document's `notes` and `terms`, line breaks kept. Each column appears only if it has text; the whole section is omitted if both are empty. |
+| Payment conditions / Notes / Terms | `terms-section.tsx` | The quotation's `paymentTerms` (full width, titled "Payment Conditions"), then the document's `notes` and `terms`, line breaks kept. Each block appears only if it has text; the whole section is omitted if all are empty. |
 | Bank details / footer | `document-footer.tsx` | "Bank Details" (account name, bank + branch, account number, IFSC) — shown only if `bankName` or `bankAccountNumber` is set in Settings. Always ends with "Thank you for your business — {company name}". |
 
 ### Where the data comes from
@@ -47,7 +48,7 @@ The bottom block is wrapped in `<div data-pdf-anchor-bottom className="mt-auto">
 |---|---|
 | Company, letterhead, bank details | `CompanySettings`, read with `getCompanySettings()` every time the page renders — Settings changes apply to existing documents too |
 | Customer | The document's customer record, as it is now (not a snapshot) |
-| Items, totals, notes, terms, dates | Stored on the quotation or invoice |
+| Items, totals, notes, terms, payment conditions, dates | Stored on the quotation, invoice or order (payment conditions exist on quotations only) |
 | Invoice terms default | `CompanySettings.invoiceTerms`, copied onto the invoice when it's created with empty terms or converted from a quotation |
 | Quotation terms | Only what was typed on the quotation form; the Settings default isn't applied |
 
@@ -94,7 +95,7 @@ The same exporter powers **Export PDF** on the report pages (`components/reports
 - **The downloaded PDF is an image.** Text can't be selected or searched. Use Print → "Save as PDF" when you need selectable text.
 - **The PDF has no page margins of its own.** Pages after the first start directly at the cut line, and the table header row is not repeated.
 - **The PDF follows the on-screen width.** The preview is at most 210 mm wide. If the browser window is narrower, the captured image is scaled up to A4 width, the document becomes taller, and a one-page invoice can spill onto a second page. Export from a window wide enough to show the full A4 preview.
-- **The logo field is unused.** The letterhead always shows the "P" monogram.
+- **The letterhead shows the bird logo.** `components/shared/brand-logo.tsx` renders `company.logoUrl` or falls back to `/Logo.png` with a plain `<img>` (not `next/image`), so the PDF export captures it. There is no Settings field to set `logoUrl` yet. The same component draws the sidebar and login logo.
 - **Bank details are optional.** If Settings has neither a bank name nor an account number, the Bank Details block is left out and only the thank-you line remains.
 - **Keep the structure the exporter relies on.** If you add a section to `DocumentPreview`, make it a direct child of the container (or a child of the `data-pdf-anchor-bottom` wrapper) so it becomes a break point. Blocks nested deeper can be cut in the PDF.
 - **Keep `prevent-break`** on blocks that must not be split when printed.

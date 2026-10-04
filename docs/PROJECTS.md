@@ -66,6 +66,7 @@ One row per timer session.
 | `status` | `RUNNING`, `PAUSED` or `COMPLETED` |
 | `notes` | Optional note given when starting |
 | `flaggedForReview` | Set to true if a timer ran longer than 12 hours |
+| `approvedAt`, `approvedById` | Set when an admin approves the entry. Clients see only approved entries. Cleared when the entry is edited |
 
 ## Project lifecycle & access scoping
 
@@ -98,6 +99,15 @@ Timer operations run in a database transaction in `lib/services/projects.ts`:
 ### Time Entry Editing & Deletion
 - **Admin**: Can edit description/times or delete any time entry.
 - **Employee**: Can edit or delete their own time entries within a 24-hour window from start. Overlapping time entries are rejected.
+- Editing an entry clears its approval, so changed time must be approved again.
+
+### Starting a timer from a task
+- A task card on the board (`/tasks` or the project's Tasks tab) has a Start button for admins and assigned employees. It posts `taskId` and the task title as the description to `/api/projects/[id]/timer/start`, so the entry is linked to the task. The card shows who is working and the live elapsed time; the owner can stop it from the card. Clients see only "<name> is working".
+
+### Time approval
+- Only admins (`projects:approve_time`) can approve. A completed entry (`endedAt` set) is approved or unapproved one at a time, or in bulk with "Approve all pending" on the Timer tab. Running entries can't be approved.
+- **Clients see approved time only.** `listProjectTimeEntries`, `getProjectById`, `listProjects` and `toClientProjectDto` drop unapproved entries for clients, and client totals and time-per-task count approved entries only. A running timer still shows as "someone is working now" but adds nothing to client totals.
+- Staff see an Approved / Pending badge on every entry.
 
 ### Persistent Header Chip
 - Active timers are polled via `/api/timer/active` and shown in a topbar header chip with live elapsed time and a quick Stop button.
@@ -111,6 +121,7 @@ Timer operations run in a database transaction in `lib/services/projects.ts`:
 | `projects:edit` | Edit a project, including setting it to `COMPLETED` | ✓ | — |
 | `projects:delete` | Delete a project and all its time entries | — | — |
 | `projects:timer` | Start, pause, resume, stop | ✓ (assigned) | — |
+| `projects:approve_time` | Approve or unapprove time entries | — | — |
 
 ## API
 
@@ -129,3 +140,10 @@ JSON routes for programmatic use and client components:
 | `/api/timer/active` | GET | ADMIN, EMPLOYEE | Caller's active running timer |
 | `/api/timer/stop` | POST | ADMIN, EMPLOYEE | Stop caller's active running timer |
 | `/api/time-entries/[id]` | PATCH, DELETE | ADMIN, owner within 24h | Update or delete time entry |
+| `/api/time-entries/[id]/approve` | POST, DELETE | ADMIN | Approve / unapprove a time entry |
+| `/api/projects/[id]/time-entries/approve` | POST | ADMIN | Approve all completed, unapproved entries |
+| `/api/projects/[id]/assignable-users` | GET | All (scoped) | Admins, assigned employees and the project's client users who can be assigned tasks |
+
+## One active timer per user (database index)
+
+A partial unique index `ProjectTimeEntry_one_active_per_user` (`userId` where `endedAt IS NULL`) enforces one active timer per employee at the database level. Prisma cannot express it, so it lives in `prisma/sql/active-timer-index.sql`. Re-apply that file after `npm run db:push` if the index is dropped.

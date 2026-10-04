@@ -129,7 +129,7 @@ See [DATABASE.md](./DATABASE.md) for models, constraints and transactions.
 
 ## Authentication and authorization flow
 
-1. `proxy.ts` runs on every request except static assets. Public paths (`/login`, `/api/auth`, `/_next`, `/favicon.ico`, `/public`) pass through. Otherwise it decrypts the session JWT with `getToken()`; if that fails it redirects to `/login?callbackUrl=<path>`.
+1. `proxy.ts` runs on every request except static assets. Public paths (`/login`, `/api/auth`, `/_next`, `/favicon.ico`, `/public`) and static image files (`.png`, `.svg`, `.jpg`, `.jpeg`, `.webp`, `.ico`) pass through. Otherwise it decrypts the session JWT with `getToken()`; if that fails it redirects to `/login?callbackUrl=<path>`.
 2. `app/(app)/layout.tsx` calls `requireAuth()`. This runs the Auth.js `jwt` callback, which re-checks the user's role and status in the database about once a minute.
 3. The module `layout.tsx` (or the page itself) calls `requirePermission("<module>:view")`.
 4. Every Server Action and API handler calls `requirePermission()` for the specific operation.

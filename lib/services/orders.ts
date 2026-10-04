@@ -112,6 +112,22 @@ export async function getOrderDetail(id: string) {
   }
 }
 
+/** Order with the full customer record and ordered items, for the printable document. */
+export async function getOrderForDocument(id: string) {
+  try {
+    return await prisma.order.findUnique({
+      where: { id },
+      include: {
+        customer: true,
+        items: { orderBy: { sortOrder: "asc" } },
+      },
+    });
+  } catch (err) {
+    console.error("Error in getOrderForDocument:", err);
+    return null;
+  }
+}
+
 export function orderToFormValues(order: Order & { items: OrderItem[] }): OrderFormValues {
   return {
     customerId: order.customerId,

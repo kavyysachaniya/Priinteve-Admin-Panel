@@ -89,7 +89,7 @@ Services live in `lib/services/`, actions in `lib/actions/`, and module componen
 - **Routes:** `/quotations`, `/quotations/new` (`?customerId=` preselects a customer), `/quotations/[id]`, `/quotations/[id]/edit`.
 - **Components:** `components/quotations/quotation-form.tsx`, `quotation-actions.tsx`, `delete-quotation-item.tsx`; `shared/document-items-editor.tsx`; `components/documents/*`.
 - **Actions:** `lib/actions/quotations.ts`; "Book Print Order" uses `convertQuotationToOrderAction` in `lib/actions/orders.ts`.
-- **Models:** `Quotation`, `QuotationItem`.
+- **Models:** `Quotation` (including `notes`, `terms` and `paymentTerms` — the "Payment Conditions" field), `QuotationItem`.
 - **Rules:**
   - Status flow `DRAFT → SENT → ACCEPTED/REJECTED/EXPIRED`.
   - An accepted quotation converts once to an invoice and once to an order.
@@ -99,8 +99,8 @@ Services live in `lib/services/`, actions in `lib/actions/`, and module componen
 ## Orders
 
 - **Purpose:** confirmed print jobs that drive production and delivery.
-- **Routes:** `/orders`, `/orders/new`, `/orders/[id]`, `/orders/[id]/edit`.
-- **Components:** `components/orders/order-form.tsx`, `order-list.tsx`, `order-detail.tsx`, `delete-order-item.tsx`.
+- **Routes:** `/orders`, `/orders/new`, `/orders/[id]`, `/orders/[id]/edit`, `/orders/[id]/document` (printable order document).
+- **Components:** `components/orders/order-form.tsx`, `order-list.tsx`, `order-detail.tsx`, `delete-order-item.tsx`. The document page reuses `components/documents/document-preview.tsx` with `kind: "Order"` and the same Print / Download PDF buttons as invoices; its data comes from `getOrderForDocument()`.
 - **Models:** `Order`, `OrderItem`; creates `ProductionJob` rows; may have one `Delivery`.
 - **Rules:**
   - One GST rate from Settings; totals are recomputed on the server.
@@ -173,11 +173,16 @@ Services live in `lib/services/`, actions in `lib/actions/`, and module componen
 
 ## Tasks
 
-- **Purpose:** to-dos linked to customers, orders, quotations, invoices or production jobs.
-- **Routes:** `/tasks` (status filter), `/tasks/new`, `/tasks/[id]`, `/tasks/[id]/edit`.
-- **Components:** `components/tasks/task-list.tsx`, `task-form.tsx`, `task-detail.tsx`, `delete-task-item.tsx`.
-- **Models:** `Task` (status, priority, due date + time, reminder, tags, assignee).
-- **Rules:** the quick toggle switches between `TODO` and `COMPLETED`. Employees have full task permissions.
+- **Purpose:** to-dos linked to customers, orders, quotations, invoices, production jobs and projects, shown as a Trello-style board or a list.
+- **Routes:** `/tasks` (`?view=board` is the default, `?view=list` is the table; `?filter=assigned|tagged`), `/tasks/new`, `/tasks/[id]`, `/tasks/[id]/edit`. The same board is the project's Tasks tab.
+- **Components:** `components/tasks/task-board.tsx` (columns To Do / In Progress / Completed, plus Cancelled when it has tasks; `@dnd-kit` drag and drop), `task-card.tsx` (deadline, assignee, tagged people, Start/Stop timer), `task-create-dialog.tsx` (project, deadline date + time, assignee, tags), `task-list.tsx`, `task-form.tsx`, `task-detail.tsx`, `delete-task-item.tsx`.
+- **Models:** `Task` (status, `position`, priority, due date + time, reminder, tags, assignee).
+- **Rules:**
+  - Dragging calls `moveTaskAction` → `moveTask()`: it sets the status and a fractional `position` between the neighbouring cards. Clients can move only tasks they created; employees need access to the task's project; admins can move anything.
+  - A task's assignee (and tagged people) can be an active admin, an employee assigned to the project, or a client user linked to the project's customer. See [BUSINESS-LOGIC.md](./BUSINESS-LOGIC.md#tasks-notes-and-calendar).
+  - Admins and employees can start a timer from a card; clients cannot. Cards show overdue deadlines in red.
+  - Comments and file attachments are not built yet.
+  - The list view's checkbox still toggles between `TODO` and `COMPLETED`.
 
 ## Notes
 
@@ -285,7 +290,8 @@ Services live in `lib/services/`, actions in `lib/actions/`, and module componen
   | Default GST rate | Orders |
   | Invoice due days | Quotation → invoice conversion |
   | Default invoice terms | New and converted invoices |
-  | Default quotation terms, quotation validity days, logo | Nothing yet — see [BUSINESS-LOGIC.md](./BUSINESS-LOGIC.md#known-gaps) |
+  | Default quotation terms, quotation validity days | Nothing yet — see [BUSINESS-LOGIC.md](./BUSINESS-LOGIC.md#known-gaps) |
+  | Logo URL (`logoUrl`; no Settings field edits it yet) | Document letterhead; falls back to `/Logo.png` |
 
 ## Not routed: customer and vendor statements
 

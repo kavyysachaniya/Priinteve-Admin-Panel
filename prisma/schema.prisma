@@ -190,7 +190,8 @@ model User {
   createdProjects              Project[]              @relation("CreatedProjects")
   assignedProjects             Project[]              @relation("AssignedProjects")
   projectTimeEntries           ProjectTimeEntry[]
-  projectAssignments           ProjectAssignment[]    @relation("AssignedEmployee")
+  approvedTimeEntries          ProjectTimeEntry[]     @relation("TimeEntryApprovedBy")
+  projectAssignments          ProjectAssignment[]    @relation("AssignedEmployee")
   assignedByProjectAssignments ProjectAssignment[]    @relation("AssignedByEmployee")
   taskMentions                 TaskMention[]          @relation("UserTaskMentions")
   taggedMentions               TaskMention[]          @relation("UserTaggedMentions")
@@ -281,6 +282,7 @@ model Quotation {
   status        QuotationStatus @default(DRAFT)
   notes         String?
   terms         String?
+  paymentTerms  String?
 
   subtotalPaise Int @default(0)
   discountPaise Int @default(0)
@@ -552,6 +554,7 @@ model Task {
   dueTime     String?
   tags        String?
   reminder    DateTime?
+  position    Float        @default(0)
 
   assignedToId String?
   assignedTo   User?   @relation("AssignedTasks", fields: [assignedToId], references: [id])
@@ -594,6 +597,7 @@ model Task {
   @@index([projectId])
   @@index([createdById])
   @@index([assignedToId])
+  @@index([status, position])
 }
 
 model CalendarEvent {
@@ -708,9 +712,13 @@ model ProjectTimeEntry {
   status           TimeEntryStatus @default(RUNNING)
   notes            String?
   flaggedForReview Boolean         @default(false)
+  approvedAt       DateTime?
+  approvedById     String?
+  approvedBy       User?           @relation("TimeEntryApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
+  @@index([projectId, approvedAt])
   @@index([projectId])
   @@index([userId])
   @@index([status])

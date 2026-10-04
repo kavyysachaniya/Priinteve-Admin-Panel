@@ -125,6 +125,14 @@ export function QuotationForm({
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Payment Conditions" htmlFor="paymentTerms" error={errors.paymentTerms?.message} className="sm:col-span-2">
+            <Textarea
+              id="paymentTerms"
+              rows={2}
+              placeholder="e.g. 50% advance with order, balance before delivery"
+              {...register("paymentTerms")}
+            />
+          </Field>
           <Field label="Notes" htmlFor="notes" error={errors.notes?.message}>
             <Textarea id="notes" rows={4} placeholder="Visible to the customer on the document" {...register("notes")} />
           </Field>

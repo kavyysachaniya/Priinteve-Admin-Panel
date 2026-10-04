@@ -14,7 +14,7 @@ async function main() {
   console.log("=== Testing Projects & Timer Module ===");
 
   // 1. Ensure a test user exists
-  let user = await prisma.user.findFirst();
+  let user = await prisma.user.findFirst({ where: { role: "ADMIN" } });
   if (!user) {
     user = await prisma.user.create({
       data: {

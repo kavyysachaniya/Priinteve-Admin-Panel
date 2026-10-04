@@ -60,7 +60,7 @@ sequenceDiagram
 
 ### 1. `proxy.ts` — every request
 
-- Public paths pass through: `/login`, `/api/auth`, `/_next`, `/favicon.ico`, `/public`. The matcher also skips `_next/static`, `_next/image` and `favicon.ico`.
+- Public paths pass through: `/login`, `/api/auth`, `/_next`, `/favicon.ico`, `/public`. The matcher also skips `_next/static`, `_next/image`, `favicon.ico` and static image files (`.png`, `.svg`, `.jpg`, `.jpeg`, `.webp`, `.ico`) so the logo loads on the login page and for clients.
 - For anything else it calls `getToken({ req, secret: AUTH_SECRET })`, which decrypts the session cookie and checks its expiry. It does not touch the database.
 - No valid token → redirect to `/login?callbackUrl=<path>`. This also applies to API routes, which receive a redirect rather than a 401.
 
@@ -114,6 +114,7 @@ Calls `requireAuth()` and redirects to `/login` if there is no live session. Thi
 | Projects | `projects:view` | ✓ | ✓ (assigned) | ✓ (own customer, read-only) |
 | | `projects:create`, `projects:edit` | ✓ | ✓ | — |
 | | `projects:timer` | ✓ | ✓ (assigned) | — |
+| | `projects:approve_time` | ✓ | — | — |
 | | `projects:delete` | ✓ | — | — |
 | Settings | `settings:view`, `settings:edit` | ✓ | — | — |
 | Users | `users:manage` | ✓ | — | — |
@@ -171,7 +172,7 @@ Every exported function in `lib/actions/*.ts` calls `requireAuth()` or `requireP
 | `deliveries.ts` | create → `deliveries:create`; update status → `deliveries:update_status` |
 | `expenses.ts` | create/update/delete → `expenses:create` / `expenses:edit` / `expenses:delete` |
 | `vendors.ts` | create → `vendors:create`; update **and delete** → `vendors:edit` |
-| `tasks.ts` | create → `tasks:create`; update, toggle status → `tasks:edit`; delete → `tasks:delete` |
+| `tasks.ts` | create → `tasks:create`; update, toggle status, move (drag and drop) → `tasks:edit`; delete → `tasks:delete` |
 | `notes.ts` | create → `notes:create`; update, toggle pin → `notes:edit`; delete → `notes:delete` |
 | `calendar.ts` | create, update **and delete** → `calendar:create` |
 | `projects.ts` | create/update/delete → `projects:create` / `projects:edit` / `projects:delete`; start/pause/resume/stop timer → `projects:timer` |
@@ -193,7 +194,10 @@ The check runs before the action's `try` block, so a denied action **throws** (t
 | `/api/projects/[id]` | GET / PUT / DELETE | `projects:view` / `projects:edit` / `projects:delete` | 404 if not found (GET) |
 | `/api/projects/[id]/timer/start`, `.../resume` | POST | `projects:timer` | **409** if the project or user already has a running timer |
 | `/api/projects/[id]/timer/pause`, `.../stop` | POST | `projects:timer` | **403** if the running timer belongs to someone else |
-| `/api/projects/[id]/timer/status`, `/api/projects/[id]/time-entries` | GET | `projects:view` | |
+| `/api/projects/[id]/timer/status`, `/api/projects/[id]/time-entries` | GET | `projects:view` | Clients receive approved entries only |
+| `/api/time-entries/[id]/approve` | POST / DELETE | `projects:approve_time` | Approve / unapprove one entry; a running entry can't be approved |
+| `/api/projects/[id]/time-entries/approve` | POST | `projects:approve_time` | Approves all completed, unapproved entries of the project |
+| `/api/projects/[id]/assignable-users` | GET | `tasks:view` | Admins, assigned employees and the project's client users (id, name, role); 404 if the project isn't visible |
 | `/api/calendar/feed` | GET | **none in the handler** — only the `proxy.ts` session check | 500 on error |
 | `/api/auth/*` | — | public (Auth.js) | |
 

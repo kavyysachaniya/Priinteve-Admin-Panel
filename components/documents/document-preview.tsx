@@ -24,20 +24,19 @@ export function DocumentPreview({ doc }: { doc: DocumentPreviewData }) {
 
       <DocumentItemsTable items={doc.items} />
 
-      <div className="py-6">
-        <DocumentTotals
-          subtotalPaise={doc.subtotalPaise}
-          discountPaise={doc.discountPaise}
-          taxPaise={doc.taxPaise}
-          shippingPaise={doc.shippingPaise}
-          totalPaise={doc.totalPaise}
-          amountPaidPaise={doc.amountPaidPaise}
-        />
-      </div>
-
-      {/* Pinned to the bottom of the page; on longer documents it simply follows the totals. */}
+      {/* Pinned to the bottom of the page: totals, then payment conditions / notes / terms, then the footer. On longer documents it simply follows the items. */}
       <div data-pdf-anchor-bottom className="mt-auto">
-        <TermsSection notes={doc.notes} terms={doc.terms} />
+        <div className="prevent-break py-6">
+          <DocumentTotals
+            subtotalPaise={doc.subtotalPaise}
+            discountPaise={doc.discountPaise}
+            taxPaise={doc.taxPaise}
+            shippingPaise={doc.shippingPaise}
+            totalPaise={doc.totalPaise}
+            amountPaidPaise={doc.amountPaidPaise}
+          />
+        </div>
+        <TermsSection notes={doc.notes} terms={doc.terms} paymentTerms={doc.paymentTerms} />
         <DocumentFooter company={doc.company} />
       </div>
     </div>
