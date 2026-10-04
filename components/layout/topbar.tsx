@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { toast } from "sonner";
 import { useSession, signOut } from "next-auth/react";
-import { Menu, Search, Plus, Bell, Settings, LogOut, ChevronDown } from "lucide-react";
+import { Menu, Search, Plus, Settings, LogOut, ChevronDown } from "lucide-react";
 import { NAV_SECTIONS, QUICK_ACTIONS } from "@/lib/nav-config";
 import { ROLE_PERMISSIONS } from "@/lib/auth/permissions";
 import { Button } from "@/components/ui/button";
@@ -19,11 +19,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { LogoMark } from "@/components/layout/logo-mark";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { ActiveTimerHeaderChip } from "@/components/projects/active-timer-header-chip";
+import { NotificationBell } from "@/components/layout/notification-bell";
 
 function currentSectionLabel(pathname: string): string {
   for (const section of NAV_SECTIONS) {
@@ -101,6 +102,8 @@ export function Topbar() {
       </div>
 
       <div className="ml-auto flex items-center gap-2">
+        <ActiveTimerHeaderChip />
+
         {filteredQuickActions.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -122,19 +125,7 @@ export function Topbar() {
 
         <ThemeToggle />
 
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Notifications">
-              <Bell className="size-[18px]" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent align="end" className="w-72 p-0">
-            <div className="border-b px-3.5 py-2.5 text-sm font-medium">Notifications</div>
-            <div className="px-3.5 py-6 text-center text-sm text-muted-foreground">
-              You&apos;re all caught up.
-            </div>
-          </PopoverContent>
-        </Popover>
+        <NotificationBell />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

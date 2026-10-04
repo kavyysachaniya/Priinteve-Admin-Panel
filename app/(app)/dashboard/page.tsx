@@ -25,7 +25,15 @@ function changeLabel(pct: number | null, suffix = "from last month") {
   return `${sign}${pct.toFixed(1)}% ${suffix}`;
 }
 
+import { redirect } from "next/navigation";
+import { getSession } from "@/lib/auth/session";
+
 export default async function DashboardPage() {
+  const sessionUser = await getSession();
+  if (sessionUser?.role === "CLIENT") {
+    redirect("/projects");
+  }
+
   const [summary, series, activity, attention, transactions, phase2Data] = await Promise.all([
     getSummaryCards(),
     getRevenueExpenseSeries("30d"),

@@ -8,6 +8,7 @@ export interface CreateUserInput {
   password: string;
   role: UserRole;
   status?: UserStatus;
+  customerId?: string | null;
   createdById?: string;
 }
 
@@ -17,6 +18,7 @@ export interface UpdateUserInput {
   role?: UserRole;
   status?: UserStatus;
   password?: string;
+  customerId?: string | null;
 }
 
 export async function listUsers() {
@@ -28,6 +30,8 @@ export async function listUsers() {
         email: true,
         role: true,
         status: true,
+        customerId: true,
+        customer: { select: { id: true, name: true } },
         lastLoginAt: true,
         createdAt: true,
         updatedAt: true,
@@ -48,6 +52,8 @@ export async function getUserById(id: string) {
       email: true,
       role: true,
       status: true,
+      customerId: true,
+      customer: { select: { id: true, name: true } },
       lastLoginAt: true,
       createdAt: true,
       updatedAt: true,
@@ -64,6 +70,7 @@ export async function createUser(input: CreateUserInput) {
       passwordHash,
       role: input.role,
       status: input.status ?? "ACTIVE",
+      customerId: input.customerId || null,
       createdById: input.createdById,
     },
   });
@@ -75,6 +82,7 @@ export async function updateUser(id: string, input: UpdateUserInput) {
   if (input.email !== undefined) data.email = input.email.toLowerCase().trim();
   if (input.role !== undefined) data.role = input.role;
   if (input.status !== undefined) data.status = input.status;
+  if (input.customerId !== undefined) data.customerId = input.customerId || null;
   if (input.password) data.passwordHash = await hashPassword(input.password);
 
   return prisma.user.update({ where: { id }, data });
@@ -97,3 +105,24 @@ export async function activateUser(id: string) {
 export async function getUserCount() {
   return prisma.user.count();
 }
+
+export async function listActiveEmployees() {
+  try {
+    return await prisma.user.findMany({
+      where: {
+        status: "ACTIVE",
+        role: { in: ["ADMIN", "EMPLOYEE"] },
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+      },
+      orderBy: { name: "asc" },
+    });
+  } catch {
+    return [];
+  }
+}
+

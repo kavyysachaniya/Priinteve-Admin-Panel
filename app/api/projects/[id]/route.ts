@@ -6,17 +6,23 @@ import { toApiErrorResponse } from "@/lib/auth/api";
 
 export const dynamic = "force-dynamic";
 
+import { toClientProjectDto } from "@/lib/auth/projects";
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requirePermission("projects:view");
+    const user = await requirePermission("projects:view");
 
     const { id } = await params;
-    const project = await projectService.getProjectById(id);
+    const project = await projectService.getProjectById(id, user);
     if (!project) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    }
+
+    if (user.role === "CLIENT") {
+      return NextResponse.json(toClientProjectDto(project));
     }
 
     return NextResponse.json(project);

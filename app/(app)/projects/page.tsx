@@ -12,6 +12,9 @@ import { listProjects, getProjectStats, type ListProjectsParams } from "@/lib/se
 import { Plus } from "lucide-react";
 import type { ProjectPriority, ProjectStatus } from "@prisma/client";
 
+import { requireAuth } from "@/lib/auth/session";
+import { ClientProjectDashboard } from "@/components/projects/client-project-dashboard";
+
 export const metadata = { title: "Projects — Priinteve Business OS" };
 
 type ProjectSortField = NonNullable<ListProjectsParams["sort"]>;
@@ -34,21 +37,29 @@ export default async function ProjectsPage({
     page?: string;
   }>;
 }) {
+  const sessionUser = await requireAuth();
   const params = await searchParams;
   const page = parseInt(params.page ?? "1", 10);
 
   const [data, stats] = await Promise.all([
-    listProjects({
-      q: params.q,
-      status: (params.status as ProjectStatus) || undefined,
-      priority: (params.priority as ProjectPriority) || undefined,
-      hasActiveTimer: params.hasActiveTimer === "true",
-      sort: toSortField(params.sort),
-      order: (params.order as "asc" | "desc") || undefined,
-      page,
-    }),
-    getProjectStats(),
+    listProjects(
+      {
+        q: params.q,
+        status: (params.status as ProjectStatus) || undefined,
+        priority: (params.priority as ProjectPriority) || undefined,
+        hasActiveTimer: params.hasActiveTimer === "true",
+        sort: toSortField(params.sort),
+        order: (params.order as "asc" | "desc") || undefined,
+        page,
+      },
+      sessionUser
+    ),
+    getProjectStats(sessionUser),
   ]);
+
+  if (sessionUser.role === "CLIENT") {
+    return <ClientProjectDashboard projects={data.projects} />;
+  }
 
   return (
     <div className="space-y-6">

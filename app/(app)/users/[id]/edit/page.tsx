@@ -3,6 +3,7 @@ import { getUserById } from "@/lib/services/users";
 import { redirect, notFound } from "next/navigation";
 import { updateUserAction } from "@/lib/actions/users";
 import { UserForm } from "@/features/users/user-form";
+import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
@@ -20,7 +21,14 @@ export default async function EditUserPage({ params }: Props) {
   }
 
   const { id } = await params;
-  const user = await getUserById(id);
+  const [user, customers] = await Promise.all([
+    getUserById(id),
+    prisma.customer.findMany({
+      where: { status: "ACTIVE" },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
   if (!user) notFound();
 
   async function handleUpdate(values: Parameters<typeof updateUserAction>[1]) {
@@ -41,7 +49,15 @@ export default async function EditUserPage({ params }: Props) {
       </div>
       <div className="rounded-xl border bg-card p-6">
         <UserForm
-          defaultValues={{ name: user.name, email: user.email, role: user.role, status: user.status, password: "" }}
+          customers={customers}
+          defaultValues={{
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            status: user.status,
+            customerId: user.customerId ?? "",
+            password: "",
+          }}
           onSubmit={handleUpdate}
           submitLabel="Save Changes"
           isEdit

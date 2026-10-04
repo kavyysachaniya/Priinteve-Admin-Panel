@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
-import { NAV_SECTIONS } from "@/lib/nav-config";
+import { NAV_SECTIONS, CLIENT_NAV_SECTIONS, type NavSection } from "@/lib/nav-config";
 import { ROLE_PERMISSIONS } from "@/lib/auth/permissions";
 import {
   Tooltip,
@@ -28,15 +28,18 @@ export function SidebarNav({
   const { data: session } = useSession();
   const role = session?.user?.role;
 
-  // Filter sections and items based on permissions
-  const filteredSections = NAV_SECTIONS.map((section) => {
-    const filteredItems = section.items.filter((item) => {
-      if (!item.requiredPermission) return true;
-      if (!role) return false; // Hide protected items if session is not loaded yet
-      return ROLE_PERMISSIONS[role]?.includes(item.requiredPermission) ?? false;
-    });
-    return { ...section, items: filteredItems };
-  }).filter((section) => section.items.length > 0);
+  // Filter sections and items based on role / permissions
+  const sectionsToUse: NavSection[] = role === "CLIENT" ? CLIENT_NAV_SECTIONS : NAV_SECTIONS;
+  const filteredSections = sectionsToUse
+    .map((section: NavSection) => {
+      const filteredItems = section.items.filter((item) => {
+        if (!item.requiredPermission) return true;
+        if (!role) return false; // Hide protected items if session is not loaded yet
+        return ROLE_PERMISSIONS[role]?.includes(item.requiredPermission) ?? false;
+      });
+      return { ...section, items: filteredItems };
+    })
+    .filter((section) => section.items.length > 0);
 
   return (
     <nav className="flex flex-1 flex-col gap-3.5 overflow-y-auto no-scrollbar px-3 py-3">

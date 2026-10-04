@@ -101,6 +101,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             name: user.name,
             email: user.email,
             role: user.role as UserRole,
+            customerId: user.customerId,
           };
         } catch {
           return null;
@@ -114,6 +115,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user) {
         token.id = user.id;
         token.role = user.role;
+        token.customerId = user.customerId;
         token.checkedAt = Date.now();
         return token;
       }
@@ -126,10 +128,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       try {
         const current = await prisma.user.findUnique({
           where: { id: token.id },
-          select: { role: true, status: true },
+          select: { role: true, status: true, customerId: true },
         });
         if (!current || current.status !== "ACTIVE") return null;
         token.role = current.role;
+        token.customerId = current.customerId;
         token.checkedAt = Date.now();
       } catch {
         // A transient DB failure shouldn't sign everyone out; keep the last known values.
@@ -140,6 +143,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (token && session.user) {
         session.user.id = token.id as string;
         session.user.role = token.role as UserRole;
+        session.user.customerId = (token.customerId as string | null) ?? null;
       }
       return session;
     },

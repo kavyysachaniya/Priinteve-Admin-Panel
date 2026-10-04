@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Pencil, FileText, ReceiptText, Mail, Phone, MapPin, Building2, ShoppingBag, CheckSquare, StickyNote } from "lucide-react";
+import { Pencil, FileText, ReceiptText, Mail, Phone, MapPin, Building2, ShoppingBag, CheckSquare, StickyNote, UserCheck } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -57,6 +57,11 @@ export default async function CustomerDetailPage({ params }: PageProps<"/custome
             <Button variant="outline" asChild>
               <Link href={`/customers/${customer.id}/edit`}>
                 <Pencil className="size-4" /> Edit
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href={`/users/new?customerId=${customer.id}&role=CLIENT`}>
+                <UserCheck className="size-4" /> Client Login
               </Link>
             </Button>
             <Button variant="outline" asChild>

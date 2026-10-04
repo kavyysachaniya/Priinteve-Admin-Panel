@@ -13,7 +13,7 @@ Related: [ARCHITECTURE.md](./ARCHITECTURE.md) · [PROJECTS.md](./PROJECTS.md) ·
 | Provider | Auth.js v5 (`next-auth` `5.0.0-beta.32`), **Credentials** provider only (email + password) — `auth.ts` |
 | Password storage | bcrypt, 12 salt rounds — `lib/auth/password.ts` |
 | Session strategy | JWT in an encrypted cookie; no session table. Auth.js default lifetime: expires after 30 days idle, refreshed every 24 hours. |
-| Roles | `ADMIN`, `EMPLOYEE` (`UserRole` enum) |
+| Roles | `ADMIN`, `EMPLOYEE`, `CLIENT` (`UserRole` enum) |
 | Permissions | Static role → permission map in `lib/auth/permissions.ts` |
 | Server helpers | `requireAuth`, `requireRole`, `requirePermission`, `checkPermission`, `getSession` — `lib/auth/session.ts` |
 | Error types | `AuthenticationError` (401), `AuthorizationError` (403) — `lib/auth/session.ts` |
@@ -85,35 +85,38 @@ Calls `requireAuth()` and redirects to `/login` if there is no live session. Thi
 
 ## Roles and permissions
 
-`ADMIN` has every permission. `EMPLOYEE` has the subset below. Two permissions exist but are never checked by any code: `invoices:delete` (there is no invoice delete action) and `production:update_any`.
+`ADMIN` has every permission. `EMPLOYEE` has the staff operational subset below. `CLIENT` is strictly scoped to their own projects, task requests, and read-only timer tracking.
 
-| Area | Permission | Admin | Employee |
-|---|---|:-:|:-:|
-| Customers | `customers:view`, `customers:create`, `customers:edit` | ✓ | ✓ |
-| | `customers:delete` | ✓ | — |
-| Products | `products:view` | ✓ | ✓ |
-| | `products:create`, `products:edit`, `products:delete` | ✓ | — |
-| Quotations | `quotations:view`, `quotations:create`, `quotations:edit`, `quotations:convert` | ✓ | ✓ |
-| | `quotations:delete` | ✓ | — |
-| Orders | `orders:view`, `orders:create`, `orders:edit`, `orders:update_status` | ✓ | ✓ |
-| | `orders:delete` | ✓ | — |
-| Invoices | `invoices:view` | ✓ | ✓ |
-| | `invoices:create`, `invoices:edit`, `invoices:delete` | ✓ | — |
-| Payments | `payments:view` | ✓ | ✓ |
-| | `payments:record`, `payments:delete` | ✓ | — |
-| Production | `production:view`, `production:update_assigned` | ✓ | ✓ |
-| | `production:create`, `production:update_any` | ✓ | — |
-| Deliveries | `deliveries:view`, `deliveries:create`, `deliveries:update_status` | ✓ | ✓ |
-| Expenses | `expenses:view`, `expenses:create`, `expenses:edit`, `expenses:delete` | ✓ | — |
-| Vendors | `vendors:view`, `vendors:create`, `vendors:edit` | ✓ | — |
-| Finance & accounting | `finance:view`, `accounting:view`, `accounting:manage`, `journal:view`, `journal:create`, `tax:view`, `reports:view`, `statements:view` | ✓ | — |
-| Tasks | `tasks:view`, `tasks:create`, `tasks:edit`, `tasks:delete` | ✓ | ✓ |
-| Notes | `notes:view`, `notes:create`, `notes:edit`, `notes:delete` | ✓ | ✓ |
-| Calendar | `calendar:view`, `calendar:create` | ✓ | ✓ |
-| Projects | `projects:view`, `projects:create`, `projects:edit`, `projects:timer` | ✓ | ✓ |
-| | `projects:delete` | ✓ | — |
-| Settings | `settings:view`, `settings:edit` | ✓ | — |
-| Users | `users:manage` | ✓ | — |
+| Area | Permission | Admin | Employee | Client |
+|---|---|:-:|:-:|:-:|
+| Customers | `customers:view`, `customers:create`, `customers:edit` | ✓ | ✓ | — |
+| | `customers:delete` | ✓ | — | — |
+| Products | `products:view` | ✓ | ✓ | — |
+| | `products:create`, `products:edit`, `products:delete` | ✓ | — | — |
+| Quotations | `quotations:view`, `quotations:create`, `quotations:edit`, `quotations:convert` | ✓ | ✓ | — |
+| | `quotations:delete` | ✓ | — | — |
+| Orders | `orders:view`, `orders:create`, `orders:edit`, `orders:update_status` | ✓ | ✓ | — |
+| | `orders:delete` | ✓ | — | — |
+| Invoices | `invoices:view` | ✓ | ✓ | — |
+| | `invoices:create`, `invoices:edit`, `invoices:delete` | ✓ | — | — |
+| Payments | `payments:view` | ✓ | ✓ | — |
+| | `payments:record`, `payments:delete` | ✓ | — | — |
+| Production | `production:view`, `production:update_assigned` | ✓ | ✓ | — |
+| | `production:create`, `production:update_any` | ✓ | — | — |
+| Deliveries | `deliveries:view`, `deliveries:create`, `deliveries:update_status` | ✓ | ✓ | — |
+| Expenses | `expenses:view`, `expenses:create`, `expenses:edit`, `expenses:delete` | ✓ | — | — |
+| Vendors | `vendors:view`, `vendors:create`, `vendors:edit` | ✓ | — | — |
+| Finance & accounting | `finance:view`, `accounting:view`, `accounting:manage`, `journal:view`, `journal:create`, `tax:view`, `reports:view`, `statements:view` | ✓ | — | — |
+| Tasks | `tasks:view`, `tasks:create` | ✓ | ✓ | ✓ (own projects) |
+| | `tasks:edit`, `tasks:delete` | ✓ | ✓ | ✓ (own created tasks only) |
+| Notes | `notes:view`, `notes:create`, `notes:edit`, `notes:delete` | ✓ | ✓ | — |
+| Calendar | `calendar:view`, `calendar:create` | ✓ | ✓ | — |
+| Projects | `projects:view` | ✓ | ✓ (assigned) | ✓ (own customer, read-only) |
+| | `projects:create`, `projects:edit` | ✓ | ✓ | — |
+| | `projects:timer` | ✓ | ✓ (assigned) | — |
+| | `projects:delete` | ✓ | — | — |
+| Settings | `settings:view`, `settings:edit` | ✓ | — | — |
+| Users | `users:manage` | ✓ | — | — |
 
 > [!NOTE]
 > `production:update_assigned` does **not** restrict updates to jobs assigned to the user. `updateProductionJobStatusAction` checks only the permission, and the service does not compare `assignedToId`. Any Employee can change the stage of any production job.

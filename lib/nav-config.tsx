@@ -22,6 +22,7 @@ import {
   Settings,
   UserCheck,
   FolderKanban,
+  Timer,
   type LucideIcon,
 } from "lucide-react";
 import type { Permission } from "@/lib/auth/permissions";
@@ -92,6 +93,17 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: "Users", href: "/users", icon: UserCheck, requiredPermission: "users:manage" },
       { label: "Settings", href: "/settings", icon: Settings, requiredPermission: "settings:view" },
+    ],
+  },
+];
+
+export const CLIENT_NAV_SECTIONS: NavSection[] = [
+  {
+    label: null,
+    items: [
+      { label: "My Projects", href: "/projects", icon: FolderKanban },
+      { label: "Tasks", href: "/tasks", icon: CheckSquare },
+      { label: "Timer", href: "/timer", icon: Timer },
     ],
   },
 ];

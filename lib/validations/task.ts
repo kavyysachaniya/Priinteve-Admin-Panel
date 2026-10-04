@@ -5,9 +5,12 @@ export const taskFormSchema = z.object({
   description: z.string().optional().default(""),
   status: z.enum(["TODO", "IN_PROGRESS", "COMPLETED", "CANCELLED"]).default("TODO"),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]).default("MEDIUM"),
+  projectId: z.string().optional().default(""),
   dueDate: z.string().optional().default(""),
   dueTime: z.string().optional().default(""),
   assignedToId: z.string().optional().default(""),
+  assigneeId: z.string().optional().default(""),
+  mentionUserIds: z.array(z.string()).optional().default([]),
   customerId: z.string().optional().default(""),
   orderId: z.string().optional().default(""),
   quotationId: z.string().optional().default(""),
@@ -25,9 +28,12 @@ export function taskFormDefaults(overrides?: Partial<TaskFormValues>): TaskFormV
     description: "",
     status: "TODO",
     priority: "MEDIUM",
+    projectId: "",
     dueDate: "",
     dueTime: "",
     assignedToId: "",
+    assigneeId: "",
+    mentionUserIds: [],
     customerId: "",
     orderId: "",
     quotationId: "",
@@ -38,4 +44,3 @@ export function taskFormDefaults(overrides?: Partial<TaskFormValues>): TaskFormV
     ...overrides,
   };
 }
-

@@ -12,9 +12,11 @@ type ProjectSortField = NonNullable<ListProjectsParams["sort"]>;
 
 const SORT_FIELDS: ProjectSortField[] = ["createdAt", "name", "dueDate", "priority", "totalTime"];
 
+import { toClientProjectDto } from "@/lib/auth/projects";
+
 export async function GET(request: Request) {
   try {
-    await requirePermission("projects:view");
+    const user = await requirePermission("projects:view");
 
     const { searchParams } = new URL(request.url);
     const q = searchParams.get("q") ?? undefined;
@@ -29,18 +31,28 @@ export async function GET(request: Request) {
     const page = parseInt(searchParams.get("page") ?? "1", 10);
     const pageSize = parseInt(searchParams.get("pageSize") ?? "15", 10);
 
-    const result = await projectService.listProjects({
-      q,
-      status,
-      priority,
-      assignedToId,
-      customerId,
-      hasActiveTimer,
-      sort,
-      order,
-      page,
-      pageSize,
-    });
+    const result = await projectService.listProjects(
+      {
+        q,
+        status,
+        priority,
+        assignedToId,
+        customerId,
+        hasActiveTimer,
+        sort,
+        order,
+        page,
+        pageSize,
+      },
+      user
+    );
+
+    if (user.role === "CLIENT") {
+      return NextResponse.json({
+        ...result,
+        projects: result.projects.map((p) => toClientProjectDto(p)),
+      });
+    }
 
     return NextResponse.json(result);
   } catch (err) {

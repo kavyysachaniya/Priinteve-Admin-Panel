@@ -19,6 +19,7 @@ datasource db {
 enum UserRole {
   ADMIN
   EMPLOYEE
+  CLIENT
 }
 
 enum UserStatus {
@@ -177,15 +178,26 @@ model User {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  activityLogs           ActivityLog[]
-  assignedTasks          Task[]                 @relation("AssignedTasks")
-  assignedOrders         Order[]                @relation("AssignedOrders")
-  assignedProductionJobs ProductionJob[]        @relation("AssignedProductionJobs")
-  productionHistories    ProductionJobHistory[] @relation("ProductionHistories")
-  journalEntries         JournalEntry[]         @relation("JECreatedBy")
-  createdProjects        Project[]              @relation("CreatedProjects")
-  assignedProjects       Project[]              @relation("AssignedProjects")
-  projectTimeEntries     ProjectTimeEntry[]
+  customerId   String?
+  customer     Customer?  @relation("ClientCustomer", fields: [customerId], references: [id])
+
+  activityLogs                 ActivityLog[]
+  assignedTasks                Task[]                 @relation("AssignedTasks")
+  assignedOrders               Order[]                @relation("AssignedOrders")
+  assignedProductionJobs       ProductionJob[]        @relation("AssignedProductionJobs")
+  productionHistories          ProductionJobHistory[] @relation("ProductionHistories")
+  journalEntries               JournalEntry[]         @relation("JECreatedBy")
+  createdProjects              Project[]              @relation("CreatedProjects")
+  assignedProjects             Project[]              @relation("AssignedProjects")
+  projectTimeEntries           ProjectTimeEntry[]
+  projectAssignments           ProjectAssignment[]    @relation("AssignedEmployee")
+  assignedByProjectAssignments ProjectAssignment[]    @relation("AssignedByEmployee")
+  taskMentions                 TaskMention[]          @relation("UserTaskMentions")
+  taggedMentions               TaskMention[]          @relation("UserTaggedMentions")
+  createdTasks                 Task[]                 @relation("CreatedTasks")
+  notifications                Notification[]         @relation("UserNotifications")
+
+  @@index([customerId])
 }
 
 model Customer {
@@ -220,6 +232,7 @@ model Customer {
   events         CalendarEvent[]
   activityLogs   ActivityLog[]
   projects       Project[]
+  clientUsers    User[]         @relation("ClientCustomer")
 
   @@index([status])
   @@index([name])
@@ -558,6 +571,14 @@ model Task {
   productionJobId String?
   productionJob   ProductionJob? @relation(fields: [productionJobId], references: [id])
 
+  projectId       String?
+  project         Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdById     String?
+  createdBy       User?          @relation("CreatedTasks", fields: [createdById], references: [id])
+  createdByRole   UserRole?
+  mentions        TaskMention[]
+  timeEntries     ProjectTimeEntry[]
+
   events CalendarEvent[]
   notes  Note[]
 
@@ -570,6 +591,9 @@ model Task {
   @@index([priority])
   @@index([dueDate])
   @@index([customerId])
+  @@index([projectId])
+  @@index([createdById])
+  @@index([assignedToId])
 }
 
 model CalendarEvent {
@@ -643,6 +667,8 @@ model Project {
   updatedAt    DateTime        @updatedAt
 
   timeEntries  ProjectTimeEntry[]
+  assignments  ProjectAssignment[]
+  tasks        Task[]
   activityLogs ActivityLog[]
 
   @@index([status])
@@ -652,24 +678,75 @@ model Project {
   @@index([name])
 }
 
+model ProjectAssignment {
+  id           String   @id @default(cuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  employeeId   String
+  employee     User     @relation("AssignedEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  assignedById String
+  assignedBy   User     @relation("AssignedByEmployee", fields: [assignedById], references: [id])
+  assignedAt   DateTime @default(now())
+
+  @@unique([projectId, employeeId])
+  @@index([employeeId])
+  @@index([projectId])
+}
+
 model ProjectTimeEntry {
-  id              String          @id @default(cuid())
-  projectId       String
-  project         Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  userId          String?
-  user            User?           @relation(fields: [userId], references: [id])
-  startedAt       DateTime
-  endedAt         DateTime?
-  durationSeconds Int             @default(0)
-  status          TimeEntryStatus @default(RUNNING)
-  notes           String?
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  id               String          @id @default(cuid())
+  projectId        String
+  project          Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId           String?
+  user             User?           @relation(fields: [userId], references: [id])
+  taskId           String?
+  task             Task?           @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  taskDescription  String?
+  startedAt        DateTime
+  endedAt          DateTime?
+  durationSeconds  Int             @default(0)
+  status           TimeEntryStatus @default(RUNNING)
+  notes            String?
+  flaggedForReview Boolean         @default(false)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
   @@index([projectId])
   @@index([userId])
   @@index([status])
   @@index([startedAt])
+  @@index([projectId, startedAt])
+  @@index([userId, startedAt])
+  @@index([taskId])
+}
+
+model TaskMention {
+  id         String   @id @default(cuid())
+  taskId     String
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee   User     @relation("UserTaskMentions", fields: [employeeId], references: [id], onDelete: Cascade)
+  taggedById String
+  taggedBy   User     @relation("UserTaggedMentions", fields: [taggedById], references: [id])
+  createdAt  DateTime @default(now())
+
+  @@index([taskId])
+  @@index([employeeId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String
+  link      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+  @@index([userId, createdAt])
 }
 
 model Vendor {

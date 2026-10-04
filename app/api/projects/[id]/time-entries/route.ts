@@ -10,10 +10,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requirePermission("projects:view");
+    const user = await requirePermission("projects:view");
 
     const { id } = await params;
-    const entries = await projectService.listProjectTimeEntries(id);
+    const entries = await projectService.listProjectTimeEntries(id, user);
     return NextResponse.json(entries);
   } catch (err) {
     return toApiErrorResponse(err);

@@ -133,9 +133,18 @@ const EMPLOYEE_PERMISSIONS: Permission[] = [
   "projects:timer",
 ];
 
+const CLIENT_PERMISSIONS: Permission[] = [
+  "projects:view",
+  "tasks:view",
+  "tasks:create",
+  "tasks:edit",
+  "tasks:delete",
+];
+
 export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
   ADMIN: ADMIN_PERMISSIONS,
   EMPLOYEE: EMPLOYEE_PERMISSIONS,
+  CLIENT: CLIENT_PERMISSIONS,
 };
 
 /**

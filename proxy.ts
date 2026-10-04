@@ -33,8 +33,32 @@ export async function proxy(request: NextRequest) {
     (await getToken({ req: request, secret, secureCookie: true })) ??
     (await getToken({ req: request, secret, secureCookie: false }));
 
-  // If authenticated, allow through
+  // If authenticated, allow through (with role-based module restrictions)
   if (token) {
+    if (token.role === "CLIENT") {
+      const isAllowedForClient =
+        pathname.startsWith("/projects") ||
+        pathname.startsWith("/tasks") ||
+        pathname.startsWith("/timer") ||
+        pathname.startsWith("/time-entries") ||
+        pathname.startsWith("/api/projects") ||
+        pathname.startsWith("/api/tasks") ||
+        pathname.startsWith("/api/timer") ||
+        pathname.startsWith("/api/time-entries") ||
+        pathname.startsWith("/api/notifications") ||
+        pathname.startsWith("/api/auth");
+
+      if (!isAllowedForClient) {
+        if (pathname.startsWith("/api/")) {
+          return NextResponse.json(
+            { error: "Forbidden: You do not have permission to access this resource." },
+            { status: 403 }
+          );
+        }
+        return NextResponse.redirect(new URL("/projects", request.url));
+      }
+    }
+
     return NextResponse.next();
   }
 

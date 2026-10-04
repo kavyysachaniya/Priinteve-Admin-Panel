@@ -8,6 +8,7 @@ export type SessionUser = {
   name: string;
   email: string;
   role: UserRole;
+  customerId?: string | null;
 };
 
 /** Thrown when no valid session exists. Maps to HTTP 401. */

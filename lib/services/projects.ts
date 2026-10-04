@@ -1,6 +1,12 @@
 import { prisma, TX_OPTIONS } from "@/lib/prisma";
 import { logActivity } from "@/lib/services/activity";
-import type { ProjectFormValues } from "@/lib/validations/project";
+import { createNotification } from "@/lib/services/notifications";
+import {
+  canAccessProject,
+  getVisibleProjectsQuery,
+} from "@/lib/auth/projects";
+import type { SessionUser } from "@/lib/auth/session";
+import type { ProjectFormValues, TimeEntryUpdateValues } from "@/lib/validations/project";
 import type { Prisma, ProjectPriority, ProjectStatus, TimeEntryStatus } from "@prisma/client";
 
 const PAGE_SIZE = 15;
@@ -23,6 +29,14 @@ export type ProjectListItem = Prisma.ProjectGetPayload<{
     customer: { select: { id: true; name: true; email: true; phone: true } };
     assignedTo: { select: { id: true; name: true; email: true } };
     createdBy: { select: { id: true; name: true } };
+    assignments: {
+      include: {
+        employee: { select: { id: true; name: true; email: true } };
+      };
+    };
+    tasks: {
+      select: { id: true; title: true; status: true; priority: true };
+    };
     timeEntries: {
       include: {
         user: { select: { id: true; name: true } };
@@ -37,6 +51,8 @@ export type ProjectListItem = Prisma.ProjectGetPayload<{
     elapsedSeconds: number;
     userId: string | null;
     userName: string | null;
+    taskDescription?: string | null;
+    taskId?: string | null;
   } | null;
   timerStatus: "IDLE" | "RUNNING" | "PAUSED" | "COMPLETED";
 };
@@ -46,10 +62,31 @@ export type ProjectDetail = Prisma.ProjectGetPayload<{
     customer: { select: { id: true; name: true; email: true; phone: true } };
     assignedTo: { select: { id: true; name: true; email: true } };
     createdBy: { select: { id: true; name: true } };
+    assignments: {
+      include: {
+        employee: { select: { id: true; name: true; email: true } };
+        assignedBy: { select: { id: true; name: true } };
+      };
+    };
+    tasks: {
+      include: {
+        assignedTo: { select: { id: true; name: true, email: true } };
+        createdBy: { select: { id: true; name: true } };
+        mentions: {
+          include: {
+            employee: { select: { id: true; name: true } };
+            taggedBy: { select: { id: true; name: true } };
+          };
+        };
+      };
+      orderBy: { createdAt: "desc" };
+    };
     timeEntries: {
       include: {
-        user: { select: { id: true; name: true; email: true } };
+        user: { select: { id: true; name: true, email: true } };
+        task: { select: { id: true, title: true } };
       };
+      orderBy: { startedAt: "desc" };
     };
     activityLogs: {
       include: {
@@ -66,6 +103,8 @@ export type ProjectDetail = Prisma.ProjectGetPayload<{
     elapsedSeconds: number;
     userId: string | null;
     userName: string | null;
+    taskDescription?: string | null;
+    taskId?: string | null;
   } | null;
   timerStatus: "IDLE" | "RUNNING" | "PAUSED" | "COMPLETED";
 };
@@ -85,6 +124,9 @@ export function computeProjectTimerMetrics(project: {
     status: TimeEntryStatus;
     userId?: string | null;
     user?: { id: string; name: string } | null;
+    taskDescription?: string | null;
+    taskId?: string | null;
+    notes?: string | null;
   }>;
 }) {
   const now = Date.now();
@@ -123,6 +165,8 @@ export function computeProjectTimerMetrics(project: {
         elapsedSeconds: Math.max(0, Math.floor((now - new Date(runningEntry.startedAt).getTime()) / 1000)),
         userId: runningEntry.userId ?? null,
         userName: runningEntry.user?.name ?? null,
+        taskDescription: runningEntry.taskDescription || runningEntry.notes || null,
+        taskId: runningEntry.taskId ?? null,
       }
     : null;
 
@@ -133,34 +177,44 @@ export function computeProjectTimerMetrics(project: {
   };
 }
 
-export async function listProjects(params: ListProjectsParams = {}) {
+export async function listProjects(params: ListProjectsParams = {}, user?: SessionUser) {
   const page = Math.max(1, params.page ?? 1);
   const pageSize = params.pageSize ?? PAGE_SIZE;
 
+  // Base user role scoping
+  const userScope = user ? getVisibleProjectsQuery(user) : {};
+
   const where: Prisma.ProjectWhereInput = {
-    ...(params.status && params.status !== "ALL" ? { status: params.status } : {}),
-    ...(params.priority && params.priority !== "ALL" ? { priority: params.priority } : {}),
-    ...(params.assignedToId ? { assignedToId: params.assignedToId } : {}),
-    ...(params.customerId ? { customerId: params.customerId } : {}),
-    ...(params.hasActiveTimer
-      ? {
-          timeEntries: {
-            some: {
-              status: "RUNNING",
+    AND: [
+      userScope,
+      ...(params.status && params.status !== "ALL" ? [{ status: params.status }] : []),
+      ...(params.priority && params.priority !== "ALL" ? [{ priority: params.priority }] : []),
+      ...(params.assignedToId ? [{ assignedToId: params.assignedToId }] : []),
+      ...(params.customerId ? [{ customerId: params.customerId }] : []),
+      ...(params.hasActiveTimer
+        ? [
+            {
+              timeEntries: {
+                some: {
+                  status: "RUNNING" as TimeEntryStatus,
+                },
+              },
             },
-          },
-        }
-      : {}),
-    ...(params.q
-      ? {
-          OR: [
-            { name: { contains: params.q, mode: "insensitive" } },
-            { description: { contains: params.q, mode: "insensitive" } },
-            { customer: { name: { contains: params.q, mode: "insensitive" } } },
-            { assignedTo: { name: { contains: params.q, mode: "insensitive" } } },
-          ],
-        }
-      : {}),
+          ]
+        : []),
+      ...(params.q
+        ? [
+            {
+              OR: [
+                { name: { contains: params.q, mode: "insensitive" as Prisma.QueryMode } },
+                { description: { contains: params.q, mode: "insensitive" as Prisma.QueryMode } },
+                { customer: { name: { contains: params.q, mode: "insensitive" as Prisma.QueryMode } } },
+                { assignedTo: { name: { contains: params.q, mode: "insensitive" as Prisma.QueryMode } } },
+              ],
+            },
+          ]
+        : []),
+    ],
   };
 
   const orderBy: Prisma.ProjectOrderByWithRelationInput[] = [];
@@ -176,10 +230,6 @@ export async function listProjects(params: ListProjectsParams = {}) {
     orderBy.push({ createdAt: orderDirection });
   }
 
-  // Sorting by totalTime requires ranking every matching project by tracked duration before
-  // paginating. Instead of pulling every project's full time-entry history into memory, compute
-  // the ranking from DB-side aggregates (cheap: ids + summed durations + the small set of
-  // currently-running entries) and only fetch full records for the one page we're returning.
   if (params.sort === "totalTime") {
     const matchingIds = await prisma.project.findMany({ where, select: { id: true } });
     const ids = matchingIds.map((p) => p.id);
@@ -225,6 +275,14 @@ export async function listProjects(params: ListProjectsParams = {}) {
             customer: { select: { id: true, name: true, email: true, phone: true } },
             assignedTo: { select: { id: true, name: true, email: true } },
             createdBy: { select: { id: true, name: true } },
+            assignments: {
+              include: {
+                employee: { select: { id: true, name: true, email: true } },
+              },
+            },
+            tasks: {
+              select: { id: true, title: true, status: true, priority: true },
+            },
             timeEntries: {
               include: {
                 user: { select: { id: true, name: true } },
@@ -263,6 +321,14 @@ export async function listProjects(params: ListProjectsParams = {}) {
         customer: { select: { id: true, name: true, email: true, phone: true } },
         assignedTo: { select: { id: true, name: true, email: true } },
         createdBy: { select: { id: true, name: true } },
+        assignments: {
+          include: {
+            employee: { select: { id: true, name: true, email: true } },
+          },
+        },
+        tasks: {
+          select: { id: true, title: true, status: true, priority: true },
+        },
         timeEntries: {
           include: {
             user: { select: { id: true, name: true } },
@@ -289,16 +355,36 @@ export async function listProjects(params: ListProjectsParams = {}) {
   };
 }
 
-export async function getProjectById(id: string): Promise<ProjectDetail | null> {
+export async function getProjectById(id: string, user?: SessionUser): Promise<ProjectDetail | null> {
   const project = await prisma.project.findUnique({
     where: { id },
     include: {
       customer: { select: { id: true, name: true, email: true, phone: true } },
       assignedTo: { select: { id: true, name: true, email: true } },
       createdBy: { select: { id: true, name: true } },
+      assignments: {
+        include: {
+          employee: { select: { id: true, name: true, email: true } },
+          assignedBy: { select: { id: true, name: true } },
+        },
+      },
+      tasks: {
+        include: {
+          assignedTo: { select: { id: true, name: true, email: true } },
+          createdBy: { select: { id: true, name: true } },
+          mentions: {
+            include: {
+              employee: { select: { id: true, name: true } },
+              taggedBy: { select: { id: true, name: true } },
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      },
       timeEntries: {
         include: {
           user: { select: { id: true, name: true, email: true } },
+          task: { select: { id: true, title: true } },
         },
         orderBy: { startedAt: "desc" },
       },
@@ -313,6 +399,14 @@ export async function getProjectById(id: string): Promise<ProjectDetail | null> 
 
   if (!project) return null;
 
+  // Enforce access control if user provided
+  if (user) {
+    if (!canAccessProject(user, project)) {
+      // Spec 4.1: Requesting another customer's project returns 404, not 403, to avoid leaking existence
+      return null;
+    }
+  }
+
   const metrics = computeProjectTimerMetrics(project);
 
   return {
@@ -321,23 +415,32 @@ export async function getProjectById(id: string): Promise<ProjectDetail | null> 
   };
 }
 
-export async function getProjectStats() {
+export async function getProjectStats(user?: SessionUser) {
+  const baseWhere = user ? getVisibleProjectsQuery(user) : {};
+
   const [totalProjects, inProgressProjects, completedProjects, notStartedProjects, onHoldProjects, trackedAgg, runningEntries] =
     await Promise.all([
-      prisma.project.count(),
-      prisma.project.count({ where: { status: "IN_PROGRESS" } }),
-      prisma.project.count({ where: { status: "COMPLETED" } }),
-      prisma.project.count({ where: { status: "NOT_STARTED" } }),
-      prisma.project.count({ where: { status: "ON_HOLD" } }),
-      // Completed/paused durations are summed at the DB level rather than fetching every
-      // historical time entry — only the (small) set of currently-running entries needs
-      // to be pulled into memory to add their live elapsed time below.
+      prisma.project.count({ where: baseWhere }),
+      prisma.project.count({ where: { AND: [baseWhere, { status: "IN_PROGRESS" }] } }),
+      prisma.project.count({ where: { AND: [baseWhere, { status: "COMPLETED" }] } }),
+      prisma.project.count({ where: { AND: [baseWhere, { status: "NOT_STARTED" }] } }),
+      prisma.project.count({ where: { AND: [baseWhere, { status: "ON_HOLD" }] } }),
       prisma.projectTimeEntry.aggregate({
-        where: { status: { not: "RUNNING" } },
+        where: {
+          AND: [
+            { project: baseWhere },
+            { status: { not: "RUNNING" as TimeEntryStatus } },
+          ],
+        },
         _sum: { durationSeconds: true },
       }),
       prisma.projectTimeEntry.findMany({
-        where: { status: "RUNNING" },
+        where: {
+          AND: [
+            { project: baseWhere },
+            { status: "RUNNING" as TimeEntryStatus },
+          ],
+        },
         select: { startedAt: true },
       }),
     ]);
@@ -375,8 +478,29 @@ export async function createProject(values: ProjectFormValues, userId?: string) 
       dueDate: values.dueDate ? new Date(values.dueDate) : null,
       notes: values.notes?.trim() || null,
       createdById: userId || null,
+      assignments:
+        values.assignedEmployeeIds && values.assignedEmployeeIds.length > 0 && userId
+          ? {
+              create: values.assignedEmployeeIds.map((empId) => ({
+                employeeId: empId,
+                assignedById: userId,
+              })),
+            }
+          : undefined,
     },
   });
+
+  if (values.assignedEmployeeIds && values.assignedEmployeeIds.length > 0) {
+    for (const empId of values.assignedEmployeeIds) {
+      await createNotification({
+        userId: empId,
+        title: "Project Assignment",
+        message: `You were assigned to project "${project.name}".`,
+        type: "PROJECT_ASSIGNMENT",
+        link: `/projects/${project.id}`,
+      });
+    }
+  }
 
   await logActivity({
     type: "PROJECT_CREATED",
@@ -394,7 +518,10 @@ export async function createProject(values: ProjectFormValues, userId?: string) 
 export async function updateProject(id: string, values: ProjectFormValues, userId?: string) {
   const existing = await prisma.project.findUnique({
     where: { id },
-    include: { timeEntries: { where: { status: "RUNNING" } } },
+    include: {
+      timeEntries: { where: { status: "RUNNING" } },
+      assignments: true,
+    },
   });
 
   if (!existing) {
@@ -423,6 +550,54 @@ export async function updateProject(id: string, values: ProjectFormValues, userI
     });
   }
 
+  // Handle employee assignments update if provided
+  if (values.assignedEmployeeIds !== undefined && userId) {
+    const existingEmployeeIds = existing.assignments.map((a) => a.employeeId);
+    const toRemove = existingEmployeeIds.filter((empId) => !values.assignedEmployeeIds!.includes(empId));
+    const toAdd = values.assignedEmployeeIds.filter((empId) => !existingEmployeeIds.includes(empId));
+
+    // Spec 4.2: Removing an assignment while employee has an active timer stops the timer first
+    for (const empId of toRemove) {
+      const running = await prisma.projectTimeEntry.findFirst({
+        where: { projectId: id, userId: empId, status: "RUNNING" },
+      });
+      if (running) {
+        const elapsed = Math.max(0, Math.floor((now.getTime() - new Date(running.startedAt).getTime()) / 1000));
+        await prisma.projectTimeEntry.update({
+          where: { id: running.id },
+          data: { status: "COMPLETED", endedAt: now, durationSeconds: elapsed },
+        });
+      }
+    }
+
+    if (toRemove.length > 0) {
+      await prisma.projectAssignment.deleteMany({
+        where: { projectId: id, employeeId: { in: toRemove } },
+      });
+    }
+
+    if (toAdd.length > 0) {
+      await prisma.projectAssignment.createMany({
+        data: toAdd.map((empId) => ({
+          projectId: id,
+          employeeId: empId,
+          assignedById: userId,
+          assignedAt: now,
+        })),
+      });
+
+      for (const empId of toAdd) {
+        await createNotification({
+          userId: empId,
+          title: "Project Assignment",
+          message: `You were assigned to project "${values.name}".`,
+          type: "PROJECT_ASSIGNMENT",
+          link: `/projects/${id}`,
+        });
+      }
+    }
+  }
+
   const updated = await prisma.project.update({
     where: { id },
     data: {
@@ -438,9 +613,10 @@ export async function updateProject(id: string, values: ProjectFormValues, userI
     },
   });
 
-  const activityType = values.status === "COMPLETED" && existing.status !== "COMPLETED"
-    ? "PROJECT_COMPLETED"
-    : "PROJECT_UPDATED";
+  const activityType =
+    values.status === "COMPLETED" && existing.status !== "COMPLETED"
+      ? "PROJECT_COMPLETED"
+      : "PROJECT_UPDATED";
 
   await logActivity({
     type: activityType,
@@ -479,17 +655,188 @@ export async function deleteProject(id: string, userId?: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Timer Operations
+// Assignment Operations (Spec 4.2)
 // ---------------------------------------------------------------------------
 
-export async function startProjectTimer(projectId: string, userId?: string, notes?: string) {
+export async function getProjectAssignments(projectId: string) {
+  return prisma.projectAssignment.findMany({
+    where: { projectId },
+    include: {
+      employee: {
+        select: { id: true, name: true, email: true },
+      },
+      assignedBy: {
+        select: { id: true, name: true },
+      },
+    },
+    orderBy: { assignedAt: "asc" },
+  });
+}
+
+export async function assignEmployeesToProject(
+  projectId: string,
+  employeeIds: string[],
+  adminUser: SessionUser
+) {
+  if (adminUser.role !== "ADMIN") {
+    throw new Error("Only administrators can assign employees to projects.");
+  }
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    include: { assignments: true },
+  });
+
+  if (!project) throw new Error("Project not found");
+
+  const existingEmployeeIds = project.assignments.map((a) => a.employeeId);
+  const toAdd = employeeIds.filter((id) => !existingEmployeeIds.includes(id));
+  const toRemove = existingEmployeeIds.filter((id) => !employeeIds.includes(id));
+
+  const now = new Date();
+
+  await prisma.$transaction(async (tx) => {
+    for (const empId of toRemove) {
+      const running = await tx.projectTimeEntry.findFirst({
+        where: {
+          projectId,
+          userId: empId,
+          status: "RUNNING",
+        },
+      });
+      if (running) {
+        const elapsed = Math.max(0, Math.floor((now.getTime() - new Date(running.startedAt).getTime()) / 1000));
+        await tx.projectTimeEntry.update({
+          where: { id: running.id },
+          data: {
+            status: "COMPLETED",
+            endedAt: now,
+            durationSeconds: elapsed,
+          },
+        });
+      }
+    }
+
+    if (toRemove.length > 0) {
+      await tx.projectAssignment.deleteMany({
+        where: {
+          projectId,
+          employeeId: { in: toRemove },
+        },
+      });
+    }
+
+    if (toAdd.length > 0) {
+      await tx.projectAssignment.createMany({
+        data: toAdd.map((empId) => ({
+          projectId,
+          employeeId: empId,
+          assignedById: adminUser.id,
+          assignedAt: now,
+        })),
+      });
+    }
+  }, TX_OPTIONS);
+
+  for (const empId of toAdd) {
+    await createNotification({
+      userId: empId,
+      title: "Project Assignment",
+      message: `You were assigned to project "${project.name}" by ${adminUser.name}.`,
+      type: "PROJECT_ASSIGNED",
+      link: `/projects/${projectId}`,
+    });
+  }
+
+  await logActivity({
+    type: "PROJECT_ASSIGNMENTS_UPDATED",
+    message: `Team assignments updated for project "${project.name}".`,
+    entityType: "project",
+    entityId: project.id,
+    projectId: project.id,
+    userId: adminUser.id,
+  }).catch(() => {});
+
+  return getProjectAssignments(projectId);
+}
+
+export async function unassignEmployeeFromProject(
+  projectId: string,
+  employeeId: string,
+  adminUser: SessionUser
+) {
+  if (adminUser.role !== "ADMIN") {
+    throw new Error("Only administrators can unassign employees from projects.");
+  }
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+  });
+  if (!project) throw new Error("Project not found");
+
+  const now = new Date();
+
+  await prisma.$transaction(async (tx) => {
+    const running = await tx.projectTimeEntry.findFirst({
+      where: {
+        projectId,
+        userId: employeeId,
+        status: "RUNNING",
+      },
+    });
+    if (running) {
+      const elapsed = Math.max(0, Math.floor((now.getTime() - new Date(running.startedAt).getTime()) / 1000));
+      await tx.projectTimeEntry.update({
+        where: { id: running.id },
+        data: {
+          status: "COMPLETED",
+          endedAt: now,
+          durationSeconds: elapsed,
+        },
+      });
+    }
+
+    await tx.projectAssignment.deleteMany({
+      where: {
+        projectId,
+        employeeId,
+      },
+    });
+  }, TX_OPTIONS);
+
+  await logActivity({
+    type: "PROJECT_ASSIGNMENT_REMOVED",
+    message: `Employee removed from project "${project.name}".`,
+    entityType: "project",
+    entityId: project.id,
+    projectId: project.id,
+    userId: adminUser.id,
+  }).catch(() => {});
+
+  return { success: true };
+}
+
+// ---------------------------------------------------------------------------
+// Timer Operations (Spec 4.4 & 4.5)
+// ---------------------------------------------------------------------------
+
+export async function startProjectTimer(
+  projectId: string,
+  userId?: string,
+  taskDescription?: string,
+  taskId?: string | null,
+  options?: { autoStopPrevious?: boolean }
+) {
   let projectName = "";
   let customerId: string | null = null;
+  let autoStoppedProjectName: string | null = null;
 
   const timeEntry = await prisma.$transaction(async (tx) => {
     const project = await tx.project.findUnique({
       where: { id: projectId },
-      select: { id: true, name: true, status: true, customerId: true },
+      include: {
+        assignments: { select: { employeeId: true } },
+      },
     });
 
     if (!project) {
@@ -503,7 +850,25 @@ export async function startProjectTimer(projectId: string, userId?: string, note
       throw new Error("Cannot start timer on a completed project. Please reopen the project first.");
     }
 
-    // 1. Check if this project already has an active running timer
+    // Role verification
+    if (userId) {
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: { id: true, role: true },
+      });
+      if (user && user.role === "EMPLOYEE") {
+        const isAssigned =
+          project.assignments.some((a) => a.employeeId === userId) ||
+          project.assignedToId === userId;
+        if (!isAssigned) {
+          throw new Error("You must be assigned to this project to start the timer.");
+        }
+      } else if (user && user.role === "CLIENT") {
+        throw new Error("Clients cannot start timers.");
+      }
+    }
+
+    // Check if this project already has an active running timer
     const existingRunning = await tx.projectTimeEntry.findFirst({
       where: {
         projectId,
@@ -511,43 +876,87 @@ export async function startProjectTimer(projectId: string, userId?: string, note
       },
     });
 
-    if (existingRunning) {
-      throw new Error("This project already has an active timer.");
-    }
+    // If options.autoStopPrevious is NOT set (e.g. test scripts), enforce strict checks
+    if (!options?.autoStopPrevious) {
+      if (existingRunning) {
+        throw new Error("This project already has an active timer.");
+      }
 
-    // 2. Check if the current user already has another active timer on any project
-    if (userId) {
-      const userActiveTimer = await tx.projectTimeEntry.findFirst({
+      if (userId) {
+        const userActiveTimer = await tx.projectTimeEntry.findFirst({
+          where: {
+            userId,
+            status: "RUNNING",
+          },
+          include: {
+            project: { select: { id: true, name: true } },
+          },
+        });
+
+        if (userActiveTimer) {
+          throw new Error(
+            `You already have an active timer running on project "${userActiveTimer.project?.name || "another project"}". Please pause or stop it first.`
+          );
+        }
+      }
+    } else {
+      // Auto-stop previous timer for user (Spec 4.4)
+      if (userId) {
+        const userActiveTimer = await tx.projectTimeEntry.findFirst({
+          where: {
+            userId,
+            status: "RUNNING",
+          },
+          include: {
+            project: { select: { id: true, name: true } },
+          },
+        });
+
+        if (userActiveTimer) {
+          const now = new Date();
+          autoStoppedProjectName = userActiveTimer.project?.name || "another project";
+          const elapsed = Math.max(0, Math.floor((now.getTime() - new Date(userActiveTimer.startedAt).getTime()) / 1000));
+          const isFlagged = elapsed > 43200; // >12 hours
+          await tx.projectTimeEntry.update({
+            where: { id: userActiveTimer.id },
+            data: {
+              status: "COMPLETED",
+              endedAt: now,
+              durationSeconds: elapsed,
+              flaggedForReview: isFlagged,
+            },
+          });
+        }
+      }
+
+      // If another user is running a timer on this project, ensure only 1 active per project
+      const otherRunning = await tx.projectTimeEntry.findFirst({
         where: {
-          userId,
+          projectId,
           status: "RUNNING",
-        },
-        include: {
-          project: { select: { id: true, name: true } },
+          ...(userId ? { userId: { not: userId } } : {}),
         },
       });
-
-      if (userActiveTimer) {
-        throw new Error(
-          `You already have an active timer running on project "${userActiveTimer.project?.name || "another project"}". Please pause or stop it first.`
-        );
+      if (otherRunning) {
+        throw new Error("This project already has an active timer.");
       }
     }
 
     const now = new Date();
+    const finalDescription = taskDescription?.trim() || "Working on project";
 
-    // Create the timer session
     const entry = await tx.projectTimeEntry.create({
       data: {
         projectId,
         userId: userId || null,
         startedAt: now,
         status: "RUNNING",
-        notes: notes?.trim() || null,
+        taskDescription: finalDescription,
+        notes: finalDescription,
+        taskId: taskId || null,
       },
     });
 
-    // If project was NOT_STARTED, automatically transition it to IN_PROGRESS
     if (project.status === "NOT_STARTED") {
       await tx.project.update({
         where: { id: projectId },
@@ -568,7 +977,7 @@ export async function startProjectTimer(projectId: string, userId?: string, note
     userId: userId || null,
   }).catch(() => {});
 
-  return timeEntry;
+  return Object.assign(timeEntry, { autoStoppedProjectName });
 }
 
 export async function pauseProjectTimer(projectId: string, userId?: string) {
@@ -607,6 +1016,7 @@ export async function pauseProjectTimer(projectId: string, userId?: string) {
 
     const now = new Date();
     elapsed = Math.max(0, Math.floor((now.getTime() - new Date(runningEntry.startedAt).getTime()) / 1000));
+    const isFlagged = elapsed > 43200;
 
     return tx.projectTimeEntry.update({
       where: { id: runningEntry.id },
@@ -614,6 +1024,7 @@ export async function pauseProjectTimer(projectId: string, userId?: string) {
         status: "PAUSED",
         endedAt: now,
         durationSeconds: elapsed,
+        flaggedForReview: isFlagged,
       },
     });
   }, TX_OPTIONS);
@@ -652,7 +1063,6 @@ export async function resumeProjectTimer(projectId: string, userId?: string) {
       throw new Error("Cannot resume timer on a completed project.");
     }
 
-    // Check project running timer
     const existingRunning = await tx.projectTimeEntry.findFirst({
       where: {
         projectId,
@@ -664,7 +1074,6 @@ export async function resumeProjectTimer(projectId: string, userId?: string) {
       throw new Error("This project already has an active timer.");
     }
 
-    // Check user active timer elsewhere
     if (userId) {
       const userActiveTimer = await tx.projectTimeEntry.findFirst({
         where: {
@@ -683,6 +1092,11 @@ export async function resumeProjectTimer(projectId: string, userId?: string) {
       }
     }
 
+    const lastEntry = await tx.projectTimeEntry.findFirst({
+      where: { projectId },
+      orderBy: { startedAt: "desc" },
+    });
+
     const now = new Date();
 
     const entry = await tx.projectTimeEntry.create({
@@ -691,6 +1105,9 @@ export async function resumeProjectTimer(projectId: string, userId?: string) {
         userId: userId || null,
         startedAt: now,
         status: "RUNNING",
+        taskDescription: lastEntry?.taskDescription || "Resumed project work",
+        notes: lastEntry?.notes || "Resumed project work",
+        taskId: lastEntry?.taskId || null,
       },
     });
 
@@ -717,9 +1134,14 @@ export async function resumeProjectTimer(projectId: string, userId?: string) {
   return resumedEntry;
 }
 
-export async function stopProjectTimer(projectId: string, userId?: string) {
+export async function stopProjectTimer(
+  projectId: string,
+  userId?: string,
+  taskDescription?: string
+) {
   let projectName = "";
   let customerId: string | null = null;
+  let elapsed = 0;
 
   await prisma.$transaction(async (tx) => {
     const project = await tx.project.findUnique({
@@ -736,7 +1158,6 @@ export async function stopProjectTimer(projectId: string, userId?: string) {
 
     const now = new Date();
 
-    // 1. If there's an active running timer, complete it
     const runningEntry = await tx.projectTimeEntry.findFirst({
       where: {
         projectId,
@@ -746,21 +1167,31 @@ export async function stopProjectTimer(projectId: string, userId?: string) {
     });
 
     if (runningEntry) {
-      if (runningEntry.userId !== userId) {
-        throw new Error("You can only control your own timer.");
+      if (runningEntry.userId && userId && runningEntry.userId !== userId) {
+        const caller = await tx.user.findUnique({
+          where: { id: userId },
+          select: { role: true },
+        });
+        if (caller?.role !== "ADMIN") {
+          throw new Error("You can only control your own timer.");
+        }
       }
-      const elapsed = Math.max(0, Math.floor((now.getTime() - new Date(runningEntry.startedAt).getTime()) / 1000));
+
+      elapsed = Math.max(0, Math.floor((now.getTime() - new Date(runningEntry.startedAt).getTime()) / 1000));
+      const isFlagged = elapsed > 43200; // >12 hours safety
+
       await tx.projectTimeEntry.update({
         where: { id: runningEntry.id },
         data: {
           status: "COMPLETED",
           endedAt: now,
           durationSeconds: elapsed,
+          flaggedForReview: isFlagged,
+          ...(taskDescription ? { taskDescription, notes: taskDescription } : {}),
         },
       });
     }
 
-    // 2. Mark any PAUSED entries as COMPLETED so that the cycle is finished
     await tx.projectTimeEntry.updateMany({
       where: {
         projectId,
@@ -782,7 +1213,156 @@ export async function stopProjectTimer(projectId: string, userId?: string) {
     userId: userId || null,
   }).catch(() => {});
 
-  return { success: true };
+  return { success: true, elapsedSeconds: elapsed };
+}
+
+export async function getActiveTimerForUser(userId: string) {
+  const activeEntry = await prisma.projectTimeEntry.findFirst({
+    where: {
+      userId,
+      status: "RUNNING",
+    },
+    include: {
+      project: { select: { id: true, name: true } },
+      task: { select: { id: true, title: true } },
+    },
+    orderBy: { startedAt: "desc" },
+  });
+
+  if (!activeEntry) return null;
+
+  const now = Date.now();
+  const elapsedSeconds = Math.max(
+    0,
+    Math.floor((now - new Date(activeEntry.startedAt).getTime()) / 1000)
+  );
+
+  return {
+    id: activeEntry.id,
+    projectId: activeEntry.projectId,
+    projectName: activeEntry.project.name,
+    taskId: activeEntry.taskId,
+    taskTitle: activeEntry.task?.title || null,
+    taskDescription: activeEntry.taskDescription || activeEntry.notes || "Working on project",
+    startedAt: activeEntry.startedAt,
+    elapsedSeconds,
+  };
+}
+
+export async function stopActiveTimerForUser(userId: string, taskDescription?: string) {
+  const activeEntry = await prisma.projectTimeEntry.findFirst({
+    where: {
+      userId,
+      status: "RUNNING",
+    },
+  });
+
+  if (!activeEntry) {
+    throw new Error("No active running timer found.");
+  }
+
+  return stopProjectTimer(activeEntry.projectId, userId, taskDescription);
+}
+
+// ---------------------------------------------------------------------------
+// Time Entry Corrections (Spec 4.4)
+// ---------------------------------------------------------------------------
+
+export async function updateTimeEntry(
+  id: string,
+  values: TimeEntryUpdateValues,
+  user: SessionUser
+) {
+  const entry = await prisma.projectTimeEntry.findUnique({
+    where: { id },
+  });
+
+  if (!entry) {
+    throw new Error("Time entry not found");
+  }
+
+  // Spec 4.4: Admin can edit any time entry. Employees can edit only their own entries within 24 hours.
+  if (user.role !== "ADMIN") {
+    if (entry.userId !== user.id) {
+      throw new Error("You can only edit your own time entries.");
+    }
+    const ageMs = Date.now() - new Date(entry.createdAt).getTime();
+    if (ageMs > 24 * 60 * 60 * 1000) {
+      throw new Error("Time entries can only be edited within 24 hours of creation.");
+    }
+  }
+
+  let startedAt = entry.startedAt;
+  let endedAt = entry.endedAt;
+
+  if (values.startedAt) {
+    startedAt = new Date(values.startedAt);
+  }
+  if (values.endedAt !== undefined) {
+    endedAt = values.endedAt ? new Date(values.endedAt) : null;
+  }
+
+  let durationSeconds = values.durationSeconds ?? entry.durationSeconds;
+  if (endedAt && startedAt) {
+    if (endedAt.getTime() < startedAt.getTime()) {
+      throw new Error("End time must be after start time.");
+    }
+    if (values.durationSeconds === undefined) {
+      durationSeconds = Math.max(0, Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000));
+    }
+  }
+
+  // Overlapping check for this user
+  if (entry.userId && endedAt) {
+    const overlap = await prisma.projectTimeEntry.findFirst({
+      where: {
+        id: { not: id },
+        userId: entry.userId,
+        endedAt: { not: null },
+        startedAt: { lt: endedAt },
+        AND: [{ endedAt: { gt: startedAt } }],
+      },
+    });
+
+    if (overlap) {
+      throw new Error("This time period overlaps with another recorded time entry.");
+    }
+  }
+
+  const isFlagged = durationSeconds > 43200;
+
+  return prisma.projectTimeEntry.update({
+    where: { id },
+    data: {
+      startedAt,
+      endedAt,
+      durationSeconds,
+      flaggedForReview: isFlagged,
+      ...(values.taskDescription ? { taskDescription: values.taskDescription, notes: values.taskDescription } : {}),
+    },
+  });
+}
+
+export async function deleteTimeEntry(id: string, user: SessionUser) {
+  const entry = await prisma.projectTimeEntry.findUnique({
+    where: { id },
+  });
+
+  if (!entry) {
+    throw new Error("Time entry not found");
+  }
+
+  if (user.role !== "ADMIN") {
+    if (entry.userId !== user.id) {
+      throw new Error("You can only delete your own time entries.");
+    }
+    const ageMs = Date.now() - new Date(entry.createdAt).getTime();
+    if (ageMs > 24 * 60 * 60 * 1000) {
+      throw new Error("Time entries can only be deleted within 24 hours of creation.");
+    }
+  }
+
+  return prisma.projectTimeEntry.delete({ where: { id } });
 }
 
 export async function getProjectTimerStatus(projectId: string) {
@@ -812,12 +1392,44 @@ export async function getProjectTimerStatus(projectId: string) {
   };
 }
 
-export async function listProjectTimeEntries(projectId: string) {
-  return prisma.projectTimeEntry.findMany({
+export async function listProjectTimeEntries(projectId: string, user?: SessionUser) {
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    include: {
+      assignments: { select: { employeeId: true } },
+    },
+  });
+
+  if (!project) throw new Error("Project not found");
+
+  if (user && !canAccessProject(user, project)) {
+    if (user.role === "CLIENT") {
+      throw new Error("Project not found");
+    }
+    throw new Error("You do not have access to this project.");
+  }
+
+  const entries = await prisma.projectTimeEntry.findMany({
     where: { projectId },
     orderBy: { startedAt: "desc" },
     include: {
       user: { select: { id: true, name: true, email: true } },
+      task: { select: { id: true, title: true } },
     },
   });
+
+  // Client gets redacted shape (Spec 4.5 & 5)
+  if (user?.role === "CLIENT") {
+    return entries.map((e) => ({
+      id: e.id,
+      startedAt: e.startedAt,
+      endedAt: e.endedAt,
+      durationSeconds: e.durationSeconds,
+      status: e.status,
+      taskDescription: e.taskDescription || e.notes || (e.task?.title ?? "General work"),
+      user: e.user ? { name: e.user.name } : null,
+    }));
+  }
+
+  return entries;
 }

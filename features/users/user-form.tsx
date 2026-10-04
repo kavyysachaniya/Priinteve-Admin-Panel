@@ -14,12 +14,13 @@ import { userFormSchema, type UserFormValues } from "@/lib/validations/user";
 
 interface UserFormProps {
   defaultValues?: Partial<UserFormValues>;
+  customers?: Array<{ id: string; name: string }>;
   onSubmit: (values: UserFormValues) => Promise<{ success: boolean; message?: string; id?: string; fieldErrors?: Record<string, string> }>;
   submitLabel?: string;
   isEdit?: boolean;
 }
 
-export function UserForm({ defaultValues, onSubmit, submitLabel = "Create User", isEdit = false }: UserFormProps) {
+export function UserForm({ defaultValues, customers, onSubmit, submitLabel = "Create User", isEdit = false }: UserFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -31,6 +32,7 @@ export function UserForm({ defaultValues, onSubmit, submitLabel = "Create User",
       role: "EMPLOYEE",
       status: "ACTIVE",
       password: "",
+      customerId: "",
       ...defaultValues,
     },
   });
@@ -52,6 +54,8 @@ export function UserForm({ defaultValues, onSubmit, submitLabel = "Create User",
     });
   }
 
+  const selectedRole = form.watch("role");
+
   return (
     <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-5">
       <div className="grid gap-5 sm:grid-cols-2">
@@ -72,13 +76,14 @@ export function UserForm({ defaultValues, onSubmit, submitLabel = "Create User",
         {/* Role */}
         <div className="space-y-2">
           <Label>Role *</Label>
-          <Select value={form.watch("role")} onValueChange={(v) => form.setValue("role", v as "ADMIN" | "EMPLOYEE")}>
+          <Select value={selectedRole} onValueChange={(v) => form.setValue("role", v as "ADMIN" | "EMPLOYEE" | "CLIENT")}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ADMIN">Admin — Full access</SelectItem>
               <SelectItem value="EMPLOYEE">Employee — Permission-based</SelectItem>
+              <SelectItem value="CLIENT">Client — External customer portal</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -96,6 +101,37 @@ export function UserForm({ defaultValues, onSubmit, submitLabel = "Create User",
             </SelectContent>
           </Select>
         </div>
+
+        {/* Linked Customer (for CLIENT role) */}
+        {selectedRole === "CLIENT" && (
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="customerId">Linked Customer *</Label>
+            <Select
+              value={form.watch("customerId") || ""}
+              onValueChange={(v) => form.setValue("customerId", v)}
+            >
+              <SelectTrigger id="customerId">
+                <SelectValue placeholder="Select customer to link to this client account…" />
+              </SelectTrigger>
+              <SelectContent>
+                {customers && customers.length > 0 ? (
+                  customers.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="none" disabled>
+                    No customers found
+                  </SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+            {form.formState.errors.customerId && (
+              <p className="text-sm text-destructive">{form.formState.errors.customerId.message}</p>
+            )}
+          </div>
+        )}
 
         {/* Password */}
         <div className="space-y-2 sm:col-span-2">
