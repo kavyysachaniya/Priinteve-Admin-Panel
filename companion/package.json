@@ -1,7 +1,7 @@
 {
   "name": "priinteve-companion",
   "productName": "Priinteve Companion",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "Morning briefing mascot for the Priinteve Business OS",
   "private": true,
   "main": "dist/main/main.js",
