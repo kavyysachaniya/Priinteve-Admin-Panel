@@ -844,7 +844,7 @@ model Attachment {
   entityType   String   // "task" (used); "expense" | "vendor" | "order" | "customer" reserved
   entityId     String
   /// S3 object key (under the panel prefix). See lib/services/storage.ts.
-  storageKey   String?  @unique
+  storageKey   String?
   uploadedById String?
   createdAt    DateTime @default(now())
 
