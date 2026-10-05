@@ -105,7 +105,7 @@ All companion rows belong to one user and are deleted with the user (`onDelete: 
 | `CompanySettings` | Letterhead, bank details, default terms, default GST rate, default validity/due days | Treated as a single row: `getCompanySettings()` reads the first row and creates one with defaults if none exists |
 | `NumberingSequence` | Next number per document type | `key` unique: `quotation`, `invoice`, `order`, `production`, `delivery`, `expense`, `journal` |
 | `ActivityLog` | Activity feed | `type`, `message`, `entityType`/`entityId`, plus optional foreign keys to the related records and the user |
-| `Attachment` | Files in S3 attached to records | Used for tasks only (`entityType` `"task"`, no foreign key; `deleteTask()` removes them). `storageKey` (unique S3 key), `fileUrl` = `s3://bucket/key`, `uploadedById`. See [STORAGE.md](./STORAGE.md). |
+| `Attachment` | Files in S3 attached to records | Used for tasks only (`entityType` `"task"`, no foreign key; `deleteTask()` removes them). `storageKey` (S3 object key), `fileUrl` = `s3://bucket/key`, `uploadedById`. See [STORAGE.md](./STORAGE.md). |
 
 ## Core relationships
 
