@@ -100,34 +100,31 @@ function initAutostart(): void {
 
 function createTray(): void {
   const icon = nativeImage.createFromPath(path.join(__dirname, "..", "assets", "tray.png"));
+  if (icon.isEmpty()) log("error", "Tray icon image could not be loaded");
   tray = new Tray(icon);
   tray.setToolTip("Priinteve Companion");
-  tray.on("click", () => void showBriefing(QUICK_RETRY_DELAYS));
-  refreshTrayMenu();
+  // Open the menu ourselves instead of relying on setContextMenu, so right-click behaves the same everywhere.
+  tray.on("click", toggleBriefing);
+  tray.on("right-click", () => tray?.popUpContextMenu(buildMenu()));
+  log("info", "Tray icon created");
 }
 
-function refreshTrayMenu(): void {
-  if (!tray) return;
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: "Show briefing now", click: () => void showBriefing(QUICK_RETRY_DELAYS) },
-      { label: "Open settings", click: openSetup },
-      { type: "separator" },
-      {
-        label: "Start with Windows",
-        type: "checkbox",
-        checked: isAutostartEnabled(),
-        // Registering the unpackaged dev build (electron.exe) would be wrong, so only the installed app can toggle it.
-        enabled: app.isPackaged,
-        click: (item) => {
-          setAutostart(item.checked);
-          refreshTrayMenu();
-        },
-      },
-      { type: "separator" },
-      { label: "Quit", click: () => app.quit() },
-    ]),
-  );
+function buildMenu(): Menu {
+  return Menu.buildFromTemplate([
+    { label: "Show briefing now", click: () => void showBriefing(QUICK_RETRY_DELAYS) },
+    { label: "Open settings", click: openSetup },
+    { type: "separator" },
+    {
+      label: "Start with Windows",
+      type: "checkbox",
+      checked: isAutostartEnabled(),
+      // Registering the unpackaged dev build (electron.exe) would be wrong, so only the installed app can toggle it.
+      enabled: app.isPackaged,
+      click: (item) => setAutostart(item.checked),
+    },
+    { type: "separator" },
+    { label: "Quit", click: () => app.quit() },
+  ]);
 }
 
 // ---------------------------------------------------------------------------
@@ -184,6 +181,16 @@ async function showBriefing(delays: number[], fresh = false): Promise<void> {
   } finally {
     fetching = false;
   }
+}
+
+/** Tray click: slide the briefing away if it's showing, otherwise show it. */
+function toggleBriefing(): void {
+  if (briefingWin && !briefingWin.isDestroyed() && briefingWin.isVisible()) {
+    // Not stored in lastState: the renderer plays its exit animation, then asks us to hide.
+    briefingWin.webContents.send("briefing:state", { kind: "leave" });
+    return;
+  }
+  void showBriefing(QUICK_RETRY_DELAYS);
 }
 
 function hideBriefing(): void {
@@ -254,6 +261,9 @@ function registerIpc(): void {
   });
   ipcMain.on("briefing:refresh", (event) => {
     if (fromBriefing(event)) void showBriefing(QUICK_RETRY_DELAYS, true);
+  });
+  ipcMain.on("briefing:menu", (event) => {
+    if (fromBriefing(event) && briefingWin) buildMenu().popup({ window: briefingWin });
   });
   ipcMain.on("briefing:interactive", (event, interactive: unknown) => {
     if (!fromBriefing(event) || !briefingWin) return;

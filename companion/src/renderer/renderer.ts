@@ -27,6 +27,14 @@
     el.addEventListener("mouseleave", () => bridge.setInteractive(false));
   }
 
+  // Right-click the mascot or the bubble for the same menu as the tray icon.
+  for (const target of [$("mascot"), $("bubble")]) {
+    target.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      bridge.showMenu();
+    });
+  }
+
   // ------------------------------------------------------------------ helpers
 
   function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string) {
@@ -135,10 +143,13 @@
 
   bridge.onState((state) => {
     if (state.kind === "enter") enter();
+    else if (state.kind === "leave") leave(() => bridge.dismiss());
     else if (state.kind === "loading") renderLoading(state.attempt, state.total);
     else if (state.kind === "briefing") renderBriefing(state.briefing, state.source);
   });
 
+  // Clicking the mascot minimises the briefing; click the tray icon to bring it back.
+  $("mascot").addEventListener("click", () => leave(() => bridge.dismiss()));
   btnOk.addEventListener("click", () => leave(() => bridge.dismiss()));
   btnRemind.addEventListener("click", () => leave(() => bridge.remindLater()));
   btnRefresh.addEventListener("click", () => bridge.refresh());
