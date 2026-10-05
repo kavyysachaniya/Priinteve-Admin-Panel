@@ -102,11 +102,6 @@ export default async function CompanionPage({ searchParams }: PageProps<"/compan
         settingsSaved={settingsSaved}
         gmailAllowed={allowed.gmail}
         gmailConnected={gmail.some((a) => a.status === "CONNECTED")}
-        server={
-          canManage
-            ? { ...env, storage: storageConfigured, bucket: process.env.S3_BUCKET ?? process.env.AWS_S3_BUCKET ?? null }
-            : null
-        }
       />
 
       <CompanionDevices

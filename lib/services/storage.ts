@@ -11,11 +11,11 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 // download directly with short-lived presigned URLs, so file bytes never pass through
 // the Next.js server. The bucket's CORS must allow the panel's origin (docs/STORAGE.md).
 //
-// Credentials: S3_BUCKET / S3_REGION / S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY, falling back to
-// AWS_S3_BUCKET and the standard AWS_* names. Vercel reserves the AWS_* names, so use the S3_* ones there.
+// Configuration: AWS_S3_BUCKET, AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY.
+// Optional AWS_S3_KEY_PREFIX (default "admin-panel").
 
 // Everything this panel writes lives under one prefix, so the bucket can be shared with other apps.
-const KEY_PREFIX = (process.env.S3_KEY_PREFIX ?? "admin-panel").replace(/^\/+|\/+$/g, "");
+const KEY_PREFIX = (process.env.AWS_S3_KEY_PREFIX ?? "admin-panel").replace(/^\/+|\/+$/g, "");
 
 /** Builds an object key under the panel's prefix, e.g. `admin-panel/tasks/<id>/<file>`. */
 export function storageKey(...parts: string[]): string {
@@ -32,10 +32,10 @@ const DOWNLOAD_URL_TTL_SECONDS = 5 * 60;
 let client: S3Client | null = null;
 
 function config() {
-  const bucket = process.env.S3_BUCKET || process.env.AWS_S3_BUCKET;
-  const region = process.env.S3_REGION || process.env.AWS_REGION;
-  const accessKeyId = process.env.S3_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.S3_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY;
+  const bucket = process.env.AWS_S3_BUCKET;
+  const region = process.env.AWS_REGION;
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
   return { bucket, region, accessKeyId, secretAccessKey };
 }
 
@@ -47,7 +47,7 @@ export function isStorageConfigured(): boolean {
 function s3(): { client: S3Client; bucket: string } {
   const c = config();
   if (!c.bucket || !c.region || !c.accessKeyId || !c.secretAccessKey) {
-    throw new Error("File storage isn't configured on the server (S3_BUCKET, region and access keys).");
+    throw new Error("File storage isn't configured on the server (AWS_S3_BUCKET, AWS_REGION and the AWS access keys).");
   }
   client ??= new S3Client({
     region: c.region,
