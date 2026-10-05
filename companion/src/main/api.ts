@@ -28,9 +28,11 @@ export function loadSampleBriefing(): Briefing {
   return { ...parsed, generatedAt: new Date().toISOString() };
 }
 
-async function requestBriefing(serverUrl: string, token: string, fresh = false): Promise<Briefing> {
+async function requestBriefing(serverUrl: string, token: string, fresh = false, daily = false): Promise<Briefing> {
   const url = new URL("/api/companion/briefing", serverUrl);
   if (fresh) url.searchParams.set("fresh", "1");
+  // First briefing of the day: the panel also runs the websites, Slack and email checks.
+  if (daily) url.searchParams.set("daily", "1");
   const res = await net.fetch(url.toString(), {
     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -80,6 +82,7 @@ export async function getBriefing(
   onAttempt?: (attempt: number, total: number) => void,
   useSample = false,
   fresh = false,
+  daily = false,
 ): Promise<BriefingResult> {
   const connection = getConnection();
   if (useSample || !connection) {
@@ -99,7 +102,7 @@ export async function getBriefing(
     if (delays[i] > 0) await sleep(delays[i] * 1000);
     onAttempt?.(i + 1, delays.length);
     try {
-      const briefing = await requestBriefing(connection.serverUrl, connection.token, fresh);
+      const briefing = await requestBriefing(connection.serverUrl, connection.token, fresh, daily);
       writeCachedBriefing(briefing);
       log("info", `Briefing fetched on attempt ${i + 1}`);
       return { briefing, source: "live" };

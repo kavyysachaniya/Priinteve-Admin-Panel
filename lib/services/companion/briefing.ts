@@ -22,6 +22,8 @@ const CACHE_TTL_MS = 60_000;
 interface Integration {
   key: string;
   title: string;
+  /** Checks that only run on the first briefing of the day, and only show when notable. */
+  daily?: boolean;
   section?: CompanionSectionKey;
   run: (ctx: BriefingContext) => Promise<IntegrationResult | null>;
 }
@@ -30,9 +32,9 @@ interface Integration {
 // (live task, then today's tasks) comes first, then the health checks and email.
 const INTEGRATIONS: Integration[] = [
   { key: "tasks", title: "Today", run: tasksIntegration },
-  { key: "websites", title: "Websites", section: "websites", run: websitesIntegration },
-  { key: "slack", title: "Slack", section: "slack", run: slackIntegration },
-  { key: "gmail", title: "Email", section: "gmail", run: gmailIntegration },
+  { key: "websites", title: "Websites", daily: true, section: "websites", run: websitesIntegration },
+  { key: "slack", title: "Slack", daily: true, section: "slack", run: slackIntegration },
+  { key: "gmail", title: "Email", daily: true, section: "gmail", run: gmailIntegration },
 ];
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -66,16 +68,26 @@ function buildSummary(parts: string[], mood: Mood): string {
 
 // Short per-instance cache so repeated Refresh clicks don't hammer Gmail and Slack.
 const cache = new Map<string, { at: number; briefing: Briefing }>();
+const cacheKey = (userId: string, daily: boolean) => `${userId}:${daily ? "daily" : "live"}`;
 
-export async function buildBriefing(user: SessionUser, options: { origin?: string; fresh?: boolean } = {}): Promise<Briefing> {
-  const cached = cache.get(user.id);
+/**
+ * `daily` is true for the first briefing of the day (the desktop app says so). Only then do
+ * the websites, Slack and email checks run, and each is kept only if it has something new or
+ * important to report. Later briefings the same day carry just Today.
+ */
+export async function buildBriefing(
+  user: SessionUser,
+  options: { origin?: string; fresh?: boolean; daily?: boolean } = {},
+): Promise<Briefing> {
+  const daily = options.daily === true;
+  const cached = cache.get(cacheKey(user.id, daily));
   if (!options.fresh && cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.briefing;
 
   const [settings, policy] = await Promise.all([getCompanionSettings(user.id, user.name), getCompanionTeamPolicy()]);
   const allowed = allowedSections(user.role, policy);
   const ctx: BriefingContext = { user, settings, appUrl: companionAppUrl(options.origin), now: new Date() };
 
-  const active = INTEGRATIONS.filter((i) => !i.section || allowed[i.section]);
+  const active = INTEGRATIONS.filter((i) => (!i.section || allowed[i.section]) && (daily || !i.daily));
   const results = await Promise.allSettled(active.map((i) => withTimeout(i.run(ctx), INTEGRATION_TIMEOUT_MS)));
 
   const sections: BriefingSection[] = [];
@@ -84,6 +96,8 @@ export async function buildBriefing(user: SessionUser, options: { origin?: strin
     const integration = active[index];
     if (result.status === "fulfilled") {
       if (!result.value) return;
+      // A daily check with nothing to report stays out of the bubble.
+      if (integration.daily && !result.value.notable) return;
       sections.push(result.value.section);
       if (result.value.summary) summaryParts.push(result.value.summary);
     } else {
@@ -104,11 +118,12 @@ export async function buildBriefing(user: SessionUser, options: { origin?: strin
     mood,
     sections,
   };
-  cache.set(user.id, { at: Date.now(), briefing });
+  cache.set(cacheKey(user.id, daily), { at: Date.now(), briefing });
   return briefing;
 }
 
 /** Drop a user's cached briefing (after they change settings or accounts). */
 export function invalidateBriefingCache(userId: string) {
-  cache.delete(userId);
+  cache.delete(cacheKey(userId, true));
+  cache.delete(cacheKey(userId, false));
 }

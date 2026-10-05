@@ -147,3 +147,9 @@ JSON routes for programmatic use and client components:
 ## One active timer per user (database index)
 
 A partial unique index `ProjectTimeEntry_one_active_per_user` (`userId` where `endedAt IS NULL`) enforces one active timer per employee at the database level. Prisma cannot express it, so it lives in `prisma/sql/active-timer-index.sql`. Re-apply that file after `npm run db:push` if the index is dropped.
+
+## Time visibility and approval
+
+- **Staff** (admins and employees) see a stopped timer's time immediately, on the project's Timer tab, on the task page, and in the [timesheet](./MODULES.md#timesheet). No approval is needed for it to count.
+- **Approval now only controls what clients see.** The admin buttons are worded **Share with client** / **Hide from client** (and **Share all with client**), and entries show **Shared with client** or **Not shared**. They call the same approve/unapprove endpoints, and editing an entry still resets it to not shared.
+- **Clients** still see only shared entries (and a running timer as "someone is working"), unchanged.

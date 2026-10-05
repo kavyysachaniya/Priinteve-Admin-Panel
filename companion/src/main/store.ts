@@ -93,6 +93,8 @@ export function markAutostartInitialized(): void {
 
 interface StateFile {
   lastShownDate: string;
+  /** Local date the once-a-day checks (websites, Slack, email) were last fetched successfully. */
+  lastChecksDate: string;
   /** Local date the person pressed "Stop for today" on the project reminder. */
   stopRemindersDate: string;
   /** Tray checkbox: reminders paused until switched back on. */
@@ -128,6 +130,14 @@ export function wasShownToday(): boolean {
 
 export function markShownToday(): void {
   patchState({ lastShownDate: localDateKey() });
+}
+
+export function wasChecksShownToday(): boolean {
+  return readState().lastChecksDate === localDateKey();
+}
+
+export function markChecksShownToday(): void {
+  patchState({ lastChecksDate: localDateKey() });
 }
 
 export function areRemindersStoppedToday(): boolean {

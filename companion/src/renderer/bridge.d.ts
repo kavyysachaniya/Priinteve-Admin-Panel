@@ -17,7 +17,7 @@ interface BriefingItem {
 }
 
 interface LiveView {
-  timer: { taskId: string | null; projectName: string; startedAt: string } | null;
+  timer: { taskId: string | null; projectName: string; taskTitle: string | null; startedAt: string } | null;
   tasks: Record<string, "TODO" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED">;
 }
 

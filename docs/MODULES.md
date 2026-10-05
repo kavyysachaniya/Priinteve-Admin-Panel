@@ -34,6 +34,7 @@ The sidebar (`lib/nav-config.tsx`) groups modules the same way as this page.
 | [Vendors](#vendors) | `/vendors` | `vendors.ts` | `vendors.ts` | `vendors:view` |
 | [Users](#users) | `/users` | `users.ts` | `users.ts` | `users:manage` |
 | [Settings](#settings) | `/settings` | `settings.ts`, `numbering.ts` | `settings.ts` | `settings:view` |
+| [Timesheet](#timesheet) | `/timesheet` | `timesheets.ts` | — | `timesheet:view` |
 | [My account](#my-account) | `/account` | `account.ts` | `account.ts` | sign-in only |
 
 Services live in `lib/services/`, actions in `lib/actions/`, and module components in `components/<module>/`. The login page (`/login`) is covered in [AUTHORIZATION.md](./AUTHORIZATION.md#login-flow).
@@ -316,7 +317,20 @@ Services live in `lib/services/`, actions in `lib/actions/`, and module componen
   - Admin only (`users:manage`). Passwords must be at least 8 characters.
   - You can't deactivate yourself, and there's no delete. See [AUTHORIZATION.md](./AUTHORIZATION.md#user-status-and-deactivation).
 
-## My account
+## Timesheet
+
+- **Purpose:** tracked time per task, project, person or day over any period, for admins and employees.
+- **Routes:** `/timesheet` (`?preset=&from=&to=&group=&user=&project=&task=`) and `/api/timesheet/export` (CSV with the same filters and rules).
+- **Library and service:** `lib/timesheet.ts` (date-range presets, grouping, h:mm formatting; no database), `lib/services/timesheets.ts`, `lib/validations/timesheet.ts`.
+- **Periods:** Today, This week (Monday to Sunday), Last week, This month, Last month, This year, or a Custom from/to. Ranges are in the business time zone (Asia/Kolkata, or `APP_TIMEZONE`) and capped at 366 days. Invalid query values fall back to defaults.
+- **Group by:** Task, Project, Person, Day. Totals are h:mm; durations are stored as integer seconds.
+- **Rules:**
+  - Employees always see only their own time, whatever the URL says. Admins see everyone and can pick a person.
+  - Clients have no access (`proxy.ts` sends them to Projects, and the route needs `timesheet:view`).
+  - **Every stopped timer counts**, shared with the client or not. A running timer counts up to now.
+  - Entries are grouped by the day they **started**.
+  - At most 5,000 entries are summed per request (the page says so if the cap is hit), and the entries table lists the latest 300.
+- **Task page:** the **Time on this task** card shows the total, the last timer (who, when, how long) and every entry. Staff see time as soon as a timer stops; clients see only entries shared with them.
 
 - **Purpose:** every signed-in user (admin, employee or client) changes their own name and password. Opened from the avatar menu in the top bar.
 - **Route:** `/account`. Its layout only requires a session (`requireAuth`); `proxy.ts` also allows it for the client role.

@@ -164,5 +164,6 @@ export async function slackIntegration(ctx: BriefingContext): Promise<Integratio
   return {
     section: { key: "slack", title: "Slack", status: worstStatus(items), items },
     summary: totalErrors > 0 ? `Slack had ${plural(totalErrors, "error")} in the last day` : undefined,
+    notable: items.some((i) => i.status !== "ok"),
   };
 }

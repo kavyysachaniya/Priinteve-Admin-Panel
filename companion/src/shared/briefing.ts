@@ -210,7 +210,7 @@ export type LiveTaskStatus = "TODO" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
 
 export interface LivePayload {
   /** The person's running timer, if any (taskId is null for a project timer without a task). */
-  timer: { taskId: string | null; projectName: string; startedAt: string } | null;
+  timer: { taskId: string | null; projectName: string; taskTitle: string | null; startedAt: string } | null;
   tasks: Record<string, LiveTaskStatus>;
 }
 
@@ -235,6 +235,7 @@ export function parseLive(input: unknown): LivePayload | null {
       timer = {
         taskId: typeof o.taskId === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(o.taskId) ? o.taskId : null,
         projectName: typeof o.projectName === "string" ? o.projectName.slice(0, 120) : "",
+        taskTitle: typeof o.taskTitle === "string" ? o.taskTitle.slice(0, 200) : null,
         startedAt,
       };
     }

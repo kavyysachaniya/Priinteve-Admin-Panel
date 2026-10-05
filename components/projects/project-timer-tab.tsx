@@ -314,7 +314,7 @@ export function ProjectTimerTab({
       setEntries((prev) =>
         prev.map((e) => (e.id === entry.id ? { ...e, approvedAt: approve ? new Date().toISOString() : null } : e))
       );
-      toast.success(approve ? "Time approved — now visible to the client" : "Approval removed — hidden from the client");
+      toast.success(approve ? "Time shared — now visible to the client" : "Hidden from the client");
       router.refresh();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Could not update approval");
@@ -441,7 +441,7 @@ export function ProjectTimerTab({
                 Recent Work Sessions
               </CardTitle>
               <p className="text-[11px] text-muted-foreground font-normal">
-                Time appears here once approved by the team.
+                Time appears here once the team shares it with you.
               </p>
             </CardHeader>
             <CardContent className="p-0">
@@ -583,7 +583,7 @@ export function ProjectTimerTab({
                     disabled={approvingId !== null}
                   >
                     {approvingId === "all" ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCheck className="size-3.5" />}
-                    Approve all pending ({pendingApprovalCount})
+                    Share all with client ({pendingApprovalCount})
                   </Button>
                 )}
                 <span className="text-muted-foreground">Total Time:</span>
@@ -684,11 +684,11 @@ export function ProjectTimerTab({
                                 <span className="text-muted-foreground">—</span>
                               ) : entry.approvedAt ? (
                                 <span className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
-                                  <CheckCircle2 className="size-3" /> Approved
+                                  <CheckCircle2 className="size-3" /> Shared with client
                                 </span>
                               ) : (
                                 <span className="inline-flex items-center rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
-                                  Pending
+                                  Not shared
                                 </span>
                               )}
                             </TableCell>
@@ -701,7 +701,7 @@ export function ProjectTimerTab({
                                   className="mr-1 h-7 gap-1 px-2 text-[11px]"
                                   onClick={() => setApproval(entry, !entry.approvedAt)}
                                   disabled={approvingId !== null}
-                                  title={entry.approvedAt ? "Hide from client" : "Approve and show to client"}
+                                  title={entry.approvedAt ? "Hide this time from the client" : "Show this time to the client"}
                                 >
                                   {approvingId === entry.id ? (
                                     <Loader2 className="size-3 animate-spin" />
@@ -710,7 +710,7 @@ export function ProjectTimerTab({
                                   ) : (
                                     <CheckCircle2 className="size-3" />
                                   )}
-                                  {entry.approvedAt ? "Unapprove" : "Approve"}
+                                  {entry.approvedAt ? "Hide from client" : "Share with client"}
                                 </Button>
                               )}
                               {canEdit && !isRunning && (
