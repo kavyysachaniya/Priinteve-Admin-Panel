@@ -1,0 +1,80 @@
+{
+  "generatedAt": "2026-10-05T03:30:00.000Z",
+  "mascotName": "Inky",
+  "ownerName": "Tarang",
+  "greeting": "Good morning",
+  "summary": "One site is slow and Slack had 2 errors overnight. 4 tasks today.",
+  "mood": "worried",
+  "sections": [
+    {
+      "key": "websites",
+      "title": "Websites",
+      "status": "warn",
+      "items": [
+        {
+          "label": "priinteve.com",
+          "detail": "Up · 412 ms",
+          "status": "ok",
+          "url": "https://priinteve.com"
+        },
+        {
+          "label": "Admin panel",
+          "detail": "Slow · 3.8 s",
+          "status": "warn",
+          "url": "https://priinteve-admin-panel.vercel.app"
+        }
+      ]
+    },
+    {
+      "key": "slack",
+      "title": "Slack",
+      "status": "error",
+      "items": [
+        {
+          "label": "#alerts: 2 errors in 24 h",
+          "detail": "Latest: \"500 error on /checkout\"",
+          "status": "error",
+          "url": "https://slack.com"
+        }
+      ]
+    },
+    {
+      "key": "gmail",
+      "title": "Email",
+      "status": "ok",
+      "items": [
+        {
+          "label": "Work: 12 unread · 3 important yesterday",
+          "status": "ok",
+          "url": "https://mail.google.com"
+        },
+        {
+          "label": "Invoice query from Acme Prints",
+          "detail": "Work · awaiting your reply",
+          "status": "todo",
+          "url": "https://mail.google.com"
+        }
+      ]
+    },
+    {
+      "key": "tasks",
+      "title": "Today",
+      "status": "todo",
+      "items": [
+        {
+          "label": "Check overnight orders",
+          "status": "todo"
+        },
+        {
+          "label": "Send proofs to Mehta & Sons",
+          "detail": "Due today · High",
+          "status": "todo"
+        },
+        {
+          "label": "Tomorrow: Visiting card print run",
+          "status": "todo"
+        }
+      ]
+    }
+  ]
+}

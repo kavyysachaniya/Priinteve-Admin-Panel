@@ -2,6 +2,7 @@ import { prisma, TX_OPTIONS } from "@/lib/prisma";
 import { logActivity } from "@/lib/services/activity";
 import { createNotification } from "@/lib/services/notifications";
 import { canAccessProject } from "@/lib/auth/projects";
+import { deleteObjectQuietly } from "@/lib/services/storage";
 import type { SessionUser } from "@/lib/auth/session";
 import type { TaskFormValues } from "@/lib/validations/task";
 import type { Prisma, Task, TaskPriority, TaskStatus } from "@prisma/client";
@@ -207,6 +208,27 @@ export async function listTasksForBoard(params: ListTasksParams, user?: SessionU
 }
 
 export type BoardTask = Awaited<ReturnType<typeof listTasksForBoard>>[number];
+
+/**
+ * Open tasks (to do / in progress) due before `before`, overdue ones included, for the
+ * desktop companion briefing. "mine" = assigned to or tagged on the user; "all" is honoured
+ * for admins only. Throws on database errors so the briefing can show the section as unavailable.
+ */
+export async function listOpenTasksDueBefore(before: Date, user: SessionUser, scope: "mine" | "all") {
+  const where: Prisma.TaskWhereInput = {
+    status: { in: ["TODO", "IN_PROGRESS"] },
+    dueDate: { lt: before },
+  };
+  if (scope !== "all" || user.role !== "ADMIN") {
+    where.OR = [{ assignedToId: user.id }, { mentions: { some: { employeeId: user.id } } }];
+  }
+  return prisma.task.findMany({
+    where,
+    orderBy: [{ dueDate: "asc" }, { priority: "desc" }],
+    take: 50,
+    select: { id: true, title: true, dueDate: true, dueTime: true, priority: true, status: true },
+  });
+}
 
 export type TaskListItem = Prisma.TaskGetPayload<{
   include: {
@@ -689,5 +711,12 @@ export async function deleteTask(id: string, user?: SessionUser) {
     }
   }
 
-  return prisma.task.delete({ where: { id } });
+  // Attachments link by entityType/entityId (no foreign key), so remove them with the task.
+  const files = await prisma.attachment.findMany({ where: { entityType: "task", entityId: id }, select: { storageKey: true } });
+  const deleted = await prisma.$transaction(async (tx) => {
+    await tx.attachment.deleteMany({ where: { entityType: "task", entityId: id } });
+    return tx.task.delete({ where: { id } });
+  }, TX_OPTIONS);
+  await Promise.all(files.map((f) => deleteObjectQuietly(f.storageKey)));
+  return deleted;
 }

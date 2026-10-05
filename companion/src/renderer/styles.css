@@ -1,0 +1,443 @@
+:root {
+  --bubble-bg: #ffffff;
+  --bubble-fg: #0f172a;
+  --muted: #64748b;
+  --border: rgba(15, 23, 42, 0.08);
+  --row-hover: #f1f5f9;
+  --ok: #16a34a;
+  --warn: #d97706;
+  --error: #dc2626;
+  --todo: #2563eb;
+  --primary: #2563eb;
+  --primary-fg: #ffffff;
+  --btn-bg: #f1f5f9;
+  --shadow: 0 12px 32px rgba(15, 23, 42, 0.22), 0 2px 6px rgba(15, 23, 42, 0.12);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bubble-bg: #111827;
+    --bubble-fg: #f8fafc;
+    --muted: #94a3b8;
+    --border: rgba(255, 255, 255, 0.08);
+    --row-hover: #1f2937;
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --error: #f87171;
+    --todo: #60a5fa;
+    --primary: #3b82f6;
+    --btn-bg: #1f2937;
+    --shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--bubble-fg);
+  user-select: none;
+}
+
+.stage {
+  position: fixed;
+  inset: 0;
+}
+
+/* ------------------------------------------------------------------ bubble */
+
+.bubble {
+  position: absolute;
+  right: 22px;
+  bottom: 158px;
+  width: 360px;
+  max-height: 420px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bubble-bg);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  padding: 14px 14px 8px;
+  opacity: 0;
+  transform-origin: 85% 100%;
+}
+
+.bubble::after {
+  content: "";
+  position: absolute;
+  right: 54px;
+  bottom: -9px;
+  width: 18px;
+  height: 18px;
+  background: var(--bubble-bg);
+  transform: rotate(45deg);
+  border-radius: 3px;
+}
+
+.bubble-head h1 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.summary {
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.offline {
+  margin: 8px 0 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  color: var(--warn);
+  font-size: 12px;
+}
+
+.sections {
+  margin-top: 10px;
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  scrollbar-width: thin;
+}
+
+.section + .section {
+  margin-top: 8px;
+}
+
+.section h2 {
+  margin: 0 0 2px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.item {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  width: 100%;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+button.item {
+  cursor: pointer;
+}
+
+button.item:hover,
+button.item:focus-visible {
+  background: var(--row-hover);
+  outline: none;
+}
+
+.item-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.item-label {
+  display: block;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.item-detail {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.mark {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.mark.ok {
+  background: var(--ok);
+}
+.mark.warn {
+  background: var(--warn);
+}
+.mark.error {
+  background: var(--error);
+}
+.mark.todo {
+  background: transparent;
+  border: 2px solid var(--todo);
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.btn {
+  border: 0;
+  border-radius: 999px;
+  padding: 7px 12px;
+  background: var(--btn-bg);
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn:hover {
+  filter: brightness(0.96);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.btn.primary {
+  background: var(--primary);
+  color: var(--primary-fg);
+}
+
+.btn.icon {
+  margin-left: auto;
+  width: 32px;
+  padding: 7px 0;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.meta {
+  margin: 6px 2px 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* ------------------------------------------------------------------ mascot */
+
+.mascot {
+  position: absolute;
+  right: 22px;
+  bottom: 6px;
+  width: 128px;
+  height: 148px;
+  transform: translateX(160%);
+}
+
+.mascot svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 6px 10px rgba(15, 23, 42, 0.28));
+}
+
+.arm {
+  transform-box: view-box;
+  transform-origin: 100px 104px;
+}
+
+.eye {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: blink 4.2s infinite;
+}
+
+.mouth,
+.brows,
+.sweat,
+.sparkle {
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.stage[data-mood="happy"] .mouth-happy,
+.stage[data-mood="happy"] .sparkle,
+.stage[data-mood="neutral"] .mouth-neutral,
+.stage[data-mood="worried"] .mouth-worried,
+.stage[data-mood="worried"] .brows,
+.stage[data-mood="worried"] .sweat {
+  opacity: 1;
+}
+
+.stage[data-mood="worried"] .pupil {
+  transform: translateY(1px);
+}
+
+/* Entrance: slide in from the right edge, wave, then bob gently. */
+.stage.entered .mascot {
+  animation: slide-in 0.7s cubic-bezier(0.22, 1.2, 0.36, 1) forwards;
+}
+
+.stage.entered .mascot-bob {
+  animation: bob 3.2s ease-in-out 0.8s infinite;
+}
+
+.stage.entered .arm {
+  animation: wave 0.5s ease-in-out 0.7s 4 alternate;
+}
+
+.stage.entered .bubble {
+  animation: pop-in 0.35s ease-out 0.45s forwards;
+}
+
+.stage.leaving .mascot {
+  transform: none;
+  animation: slide-out 0.4s ease-in forwards;
+}
+
+.stage.leaving .bubble {
+  opacity: 1;
+  animation: pop-out 0.2s ease-in forwards;
+}
+
+.stage.entered.happy-bounce .mascot-bob {
+  animation: hop 0.6s ease-out 2, bob 3.2s ease-in-out 1.2s infinite;
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(160%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-out {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(160%);
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pop-out {
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+@keyframes bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes hop {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-12px);
+  }
+}
+
+@keyframes wave {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(-38deg);
+  }
+}
+
+@keyframes blink {
+  0%,
+  94%,
+  100% {
+    transform: scaleY(1);
+  }
+  97% {
+    transform: scaleY(0.1);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* Respect Windows "Animation effects" off: no sliding, waving, bobbing or blinking. */
+@media (prefers-reduced-motion: reduce) {
+  .mascot {
+    transform: none;
+    opacity: 0;
+  }
+  .eye,
+  .stage.entered .mascot-bob,
+  .stage.entered .arm,
+  .stage.entered.happy-bounce .mascot-bob {
+    animation: none;
+  }
+  .stage.entered .mascot,
+  .stage.entered .bubble {
+    animation: fade-in 0.2s linear forwards;
+  }
+  .stage.leaving .mascot,
+  .stage.leaving .bubble {
+    animation: fade-out 0.15s linear forwards;
+  }
+}

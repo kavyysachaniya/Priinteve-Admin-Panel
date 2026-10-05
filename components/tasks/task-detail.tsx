@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import type { TaskDetail as TaskDetailType } from "@/lib/services/tasks";
 
-export function TaskDetail({ task }: { task: TaskDetailType }) {
+export function TaskDetail({ task, attachments }: { task: TaskDetailType; attachments?: React.ReactNode }) {
   const router = useRouter();
 
   const handleToggleTask = async () => {
@@ -110,6 +110,8 @@ export function TaskDetail({ task }: { task: TaskDetailType }) {
           </CardContent>
         </Card>
       </div>
+
+      {attachments}
     </div>
   );
 }

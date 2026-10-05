@@ -1,0 +1,30 @@
+appId: com.priinteve.companion
+productName: Priinteve Companion
+copyright: Copyright © Priinteve
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**/*
+  - package.json
+  - "!**/*.map"
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.ico
+  # No code-signing certificate is configured, so Windows SmartScreen will warn on first install.
+  # To sign, set CSC_LINK / CSC_KEY_PASSWORD in the build environment.
+
+nsis:
+  oneClick: true
+  perMachine: false
+  allowElevation: false
+  createDesktopShortcut: false
+  createStartMenuShortcut: true
+  runAfterFinish: true
+  artifactName: "Priinteve-Companion-Setup-${version}.${ext}"
+  uninstallDisplayName: Priinteve Companion

@@ -197,6 +197,9 @@ model User {
   taggedMentions               TaskMention[]          @relation("UserTaggedMentions")
   createdTasks                 Task[]                 @relation("CreatedTasks")
   notifications                Notification[]         @relation("UserNotifications")
+  companionSettings            CompanionSettings?
+  companionDevices             CompanionDevice[]
+  companionGmailAccounts       CompanionGmailAccount[]
 
   @@index([customerId])
 }
@@ -833,14 +836,17 @@ model Expense {
 }
 
 model Attachment {
-  id         String   @id @default(cuid())
-  fileName   String
-  fileUrl    String
-  fileSize   Int?
-  mimeType   String?
-  entityType String   // "expense" | "vendor" | "order" | "customer"
-  entityId   String
-  createdAt  DateTime @default(now())
+  id           String   @id @default(cuid())
+  fileName     String
+  fileUrl      String   // s3://<bucket>/<storageKey> for files in S3
+  fileSize     Int?
+  mimeType     String?
+  entityType   String   // "task" (used); "expense" | "vendor" | "order" | "customer" reserved
+  entityId     String
+  /// S3 object key (under the panel prefix). See lib/services/storage.ts.
+  storageKey   String?  @unique
+  uploadedById String?
+  createdAt    DateTime @default(now())
 
   @@index([entityType, entityId])
 }
@@ -1066,5 +1072,91 @@ model JournalEntryLine {
   @@index([journalEntryId])
   @@index([debitAccountId])
   @@index([creditAccountId])
+}
+
+
+// ---------------------------------------------------------------------------
+// Morning Companion (desktop briefing app). See docs/COMPANION.md.
+// Everything is per user; CompanionTeamPolicy says which sections employees may use.
+// Secrets: OAuth tokens are AES-256-GCM encrypted (lib/crypto.ts); device tokens are stored as SHA-256 hashes.
+// ---------------------------------------------------------------------------
+
+enum CompanionPlannerSource {
+  MY_TASKS
+  ALL_TASKS
+}
+
+enum CompanionAccountStatus {
+  CONNECTED
+  NEEDS_RECONNECT
+}
+
+model CompanionSettings {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  mascotName String @default("Inky")
+  ownerName  String @default("")
+  greeting   String @default("Good morning")
+  timezone   String @default("Asia/Kolkata")
+
+  // JSON lists, validated by lib/validations/companion.ts
+  checklist      Json @default("[]") // string[]
+  websites       Json @default("[]") // { label, url }[]
+  slackChannels  Json @default("[]") // { id, label }[]
+  slackKeywords  Json @default("[]") // string[]
+  vipSenders     Json @default("[]") // string[]: emails or @domains
+  urgentKeywords Json @default("[]") // string[]
+
+  /// ALL_TASKS is honoured for admins only; everyone else always gets their own tasks.
+  plannerSource CompanionPlannerSource @default(MY_TASKS)
+
+  updatedAt DateTime @updatedAt
+}
+
+/// Single row (id "default"): team-wide companion settings. Which briefing sections employees
+/// may use (admins always get all), and the current Windows installer stored in S3.
+model CompanionTeamPolicy {
+  id                  String    @id @default("default")
+  employeeWebsites    Boolean   @default(true)
+  employeeSlack       Boolean   @default(true)
+  employeeGmail       Boolean   @default(true)
+  installerKey        String?
+  installerFileName   String?
+  installerSize       Int?
+  installerUploadedAt DateTime?
+  updatedAt           DateTime  @updatedAt
+}
+
+model CompanionDevice {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  tokenHash  String
+  lastSeenAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model CompanionGmailAccount {
+  id                    String                 @id @default(cuid())
+  userId                String
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label                 String
+  email                 String
+  enabled               Boolean                @default(true)
+  /// Sensitive inbox: report counts only, never rank or read message headers.
+  excludeFromProcessing Boolean                @default(false)
+  encRefreshToken       String
+  status                CompanionAccountStatus @default(CONNECTED)
+  lastError             String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  @@unique([userId, email])
 }
 

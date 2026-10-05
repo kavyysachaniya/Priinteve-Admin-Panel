@@ -192,7 +192,7 @@ Reports (P&L, balance sheet, cash flow, GST) read only `POSTED` journal entries.
 
 The following are in the repository but not used by any page. Check before building on them.
 
-- `Attachment` model; `lib/services/attachments.ts` and `components/shared/attachment-uploader.tsx` are empty files.
+- `components/shared/attachment-uploader.tsx` is an empty file. (The `Attachment` model is used for task attachments; see [STORAGE.md](./STORAGE.md).)
 - `components/accounting/statement-view.tsx`, `lib/actions/statements.ts` and `lib/services/accounting/statements.ts` — customer/vendor statements; no route renders `StatementView`.
 - `lib/services/finance.ts` — used only by `scripts/test-flow.ts`; the `/finance` page reads the accounting services instead.
 - `components/finance/*` — not imported anywhere.

@@ -16,7 +16,7 @@ Related: [DEVELOPMENT.md](./DEVELOPMENT.md) · [BUSINESS-LOGIC.md](./BUSINESS-LO
 
 ## Verification scripts
 
-All three run with `npx tsx` against the database in `.env`. They call the same service functions the UI uses, so they bypass Server Actions and permission checks.
+All run with `npx tsx`. Except `test-companion.ts`, they run against the database in `.env`. They call the same service functions the UI uses, so they bypass Server Actions and permission checks.
 
 > [!WARNING]
 > These scripts write to whatever database `DATABASE_URL` points at. Prefer a Neon branch. Never point `test-accounting-phase4.ts` at production.
@@ -25,6 +25,7 @@ All three run with `npx tsx` against the database in `.env`. They call the same 
 |---|---|---|---|
 | `scripts/test-flow.ts` | Customer → product → quotation → accept → convert → partial + full payment → dashboard/finance | **Yes**, before and after each run | Quotations, invoices, payments, money math, numbering, dashboard |
 | `scripts/test-project-timer.ts` | Projects, timer start/pause/resume/stop, concurrency rules, owner-only control, stats | **Only if every step passes** | Projects or timers |
+| `scripts/test-companion.ts` | Companion email scoring, time-zone days, SSRF blocking, Slack matching, encryption, website classification (local server). **No database, no external network.** | Nothing to clean | Companion services |
 | `scripts/test-accounting-phase4.ts` | Chart of accounts, auto-journals for invoices/payments/expenses, P&L, cash flow, GST, balance sheet | **No** | Accounting, expenses, reports |
 
 ### `scripts/test-flow.ts`
