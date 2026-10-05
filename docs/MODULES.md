@@ -211,6 +211,7 @@ Services live in `lib/services/`, actions in `lib/actions/`, and module componen
   - Users who can't edit (clients on team-owned tasks) get the same page read-only, with comments still open.
   - Beside the fields: **Time tracking**, **Comments**, **Attachments** and **Activity**.
 - **Done checkbox.** Ticking the box on a card (or "Mark Complete" on the task page) completes the task and moves it to Completed. Unticking reopens it as To Do. It uses `toggleTaskStatusAction`, so the usual rules apply.
+- **Layout.** `/tasks` uses the full screen width (`AppShell` drops the 1400 px limit for that route), and the board columns stretch evenly to fill it, scrolling sideways only on narrow screens.
 - **Move to another status.** Each card has a "Move to…" menu (the ⋯ button) next to drag and drop. It calls `moveTaskAction`, so the same rules apply, and it works with a click or on touch screens. The task page has a Status field too.
 - **Add a task in any status.** The "+" in a column header opens the create dialog with that status. Clients can only add to To Do.
 - **Timer on a task.**

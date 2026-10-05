@@ -1,5 +1,5 @@
 import { net } from "electron";
-import { parseReminder, parseUpdateInfo, type ReminderPayload, type UpdateInfo } from "../shared/briefing";
+import { parseLive, parseReminder, parseUpdateInfo, type LivePayload, type ReminderPayload, type UpdateInfo } from "../shared/briefing";
 import { describeError, log } from "./log";
 import { getConnection } from "./store";
 
@@ -35,6 +35,12 @@ export async function fetchReminder(): Promise<ReminderPayload | null> {
 /** Returns the offered update, or null when none is available (or the check failed). */
 export async function fetchUpdateInfo(currentVersion: string): Promise<UpdateInfo | null> {
   return parseUpdateInfo(await getJson(`/api/companion/update?current=${encodeURIComponent(currentVersion)}`));
+}
+
+/** The running timer and the status of the given tasks. Null when the check failed. */
+export async function fetchLive(taskIds: string[]): Promise<LivePayload | null> {
+  const query = taskIds.length ? `?tasks=${encodeURIComponent(taskIds.join(","))}` : "";
+  return parseLive(await getJson(`/api/companion/live${query}`));
 }
 
 export interface TaskActionResult {

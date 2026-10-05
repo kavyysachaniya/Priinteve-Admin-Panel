@@ -13,7 +13,7 @@ import path from "node:path";
 import { compareVersions, type Briefing, type UpdateInfo } from "../shared/briefing";
 import { BOOT_RETRY_DELAYS, QUICK_RETRY_DELAYS, getBriefing, testConnection } from "./api";
 import { startReminders } from "./reminders";
-import { fetchReminder, fetchUpdateInfo, postTaskAction } from "./server";
+import { fetchLive, fetchReminder, fetchUpdateInfo, postTaskAction } from "./server";
 import { downloadUpdate, launchInstaller } from "./updater";
 import { describeError, log } from "./log";
 import {
@@ -67,6 +67,32 @@ let remindTimer: NodeJS.Timeout | null = null;
 /** What the window is currently showing, so a reminder never covers a briefing the person is reading. */
 let windowMode: "briefing" | "reminder" | "update" = "briefing";
 let briefingDocked = false;
+
+// Live updates while the bubble is open: the renderer says which tasks are on screen, and we ask
+// the panel every 20 s (and right after an action) for the running timer and those tasks' status.
+const LIVE_INTERVAL_MS = 20_000;
+let watchedTaskIds: string[] = [];
+let livePolling = false;
+let liveTimer: NodeJS.Timeout | null = null;
+
+async function pollLive(): Promise<void> {
+  if (livePolling || useSample || !getConnection()) return;
+  if (!briefingVisible() || briefingDocked) return;
+  livePolling = true;
+  try {
+    const live = await fetchLive(watchedTaskIds);
+    if (live && briefingWin && !briefingWin.isDestroyed()) briefingWin.webContents.send("live:state", live);
+  } catch (err) {
+    log("warn", `Live update failed: ${describeError(err)}`);
+  } finally {
+    livePolling = false;
+  }
+}
+
+function startLivePolling(): void {
+  if (liveTimer) return;
+  liveTimer = setInterval(() => void pollLive(), LIVE_INTERVAL_MS);
+}
 /** Where the open window was before it was minimised, so it can return there. */
 let openBounds: { x: number; y: number } | null = null;
 let dragOrigin: { x: number; y: number } | null = null;
@@ -170,6 +196,7 @@ async function onReady(): Promise<void> {
 
   if (!useSample) {
     const testTick = app.isPackaged ? undefined : Number(process.env.COMPANION_REMINDER_TEST_MS) || undefined;
+    startLivePolling();
     startReminders({ fetchReminder, show: (briefing) => void showReminder(briefing) }, testTick);
     scheduleUpdateChecks();
   }
@@ -521,7 +548,14 @@ function registerIpc(): void {
     if (fromBriefing(event) && briefingWin) buildMenu().popup({ window: briefingWin });
   });
   ipcMain.on("briefing:docked", (event, value: unknown) => {
-    if (fromBriefing(event)) applyDock(value === true);
+    if (!fromBriefing(event)) return;
+    applyDock(value === true);
+    if (value !== true) void pollLive(); // opened again: bring the rows up to date straight away
+  });
+  ipcMain.on("briefing:watch-tasks", (event, ids: unknown) => {
+    if (!fromBriefing(event) || !Array.isArray(ids)) return;
+    watchedTaskIds = ids.filter((id): id is string => typeof id === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(id)).slice(0, 40);
+    void pollLive();
   });
   ipcMain.on("briefing:drag-start", (event) => {
     if (!fromBriefing(event) || !briefingWin) return;
@@ -572,7 +606,10 @@ function registerIpc(): void {
     const taskId = typeof input?.taskId === "string" ? input.taskId : "";
     if (action !== "complete" && action !== "start-timer" && action !== "stop-timer") return { ok: false, message: "Unknown action." };
     if (action !== "stop-timer" && !/^[A-Za-z0-9_-]{1,40}$/.test(taskId)) return { ok: false, message: "Unknown task." };
-    return postTaskAction(action, taskId);
+    const result = await postTaskAction(action, taskId);
+    // Whatever the action changed (a timer started elsewhere stops, etc.), refresh the rows now.
+    if (result.ok) setTimeout(() => void pollLive(), 400);
+    return result;
   });
   ipcMain.handle("settings:get", (event) => {
     if (!fromSetup(event)) return null;

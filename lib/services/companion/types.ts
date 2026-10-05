@@ -18,6 +18,8 @@ export interface BriefingItem {
   taskId?: string;
   /** Buttons the desktop app may show on this row. */
   actions?: ItemAction[];
+  /** True when the person's running timer is on this task. */
+  running?: boolean;
 }
 
 export interface BriefingSection {

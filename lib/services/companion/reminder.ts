@@ -3,6 +3,7 @@ import { getActiveTimerForUser } from "@/lib/services/projects";
 import { listOpenTasksDueBefore } from "@/lib/services/tasks";
 import { companionAppUrl, getCompanionSettings } from "@/lib/services/companion/settings";
 import { zonedDay } from "@/lib/services/companion/time";
+import { taskRowState } from "@/lib/services/companion/task-rows";
 import {
   plural,
   truncate,
@@ -52,6 +53,7 @@ export async function buildReminder(user: SessionUser, options: { origin?: strin
         detail: `${truncate(timer.taskTitle ?? timer.taskDescription, 80)} · ${elapsedLabel(timer.elapsedSeconds)}`,
         status: "ok",
         url: `${appUrl}/projects/${timer.projectId}`,
+        running: true,
         actions: ["stop-timer"],
       }
     : {
@@ -85,7 +87,7 @@ export async function buildReminder(user: SessionUser, options: { origin?: strin
         status: isOverdue ? "warn" : "todo",
         url: `${appUrl}/tasks/${task.id}`,
         taskId: task.id,
-        actions: task.project ? ["complete", "start-timer"] : ["complete"],
+        ...taskRowState(task, timer?.taskId ?? null),
       };
     });
     if (group.tasks.length > MAX_TASKS_PER_PROJECT) {

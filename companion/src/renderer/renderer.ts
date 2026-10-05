@@ -137,6 +137,25 @@
 
   // ---------------------------------------------------------------- rendering
 
+  // ---------------------------------------------------------------- rows (live)
+  // Each task row registers a controller so live updates can flip it in place: timer running
+  // (clock + stop button), or task done (struck through).
+  interface RowController {
+    taskId: string | null;
+    setRunning(startedAt: string | null): void;
+    setDone(): void;
+    tick(now: number): void;
+  }
+  const rows: RowController[] = [];
+
+  function formatClock(startedAt: string, now: number) {
+    const total = Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const sec = total % 60;
+    return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+  }
+
   function renderItem(item: BriefingItem) {
     const row = item.url ? el("button", "item") : el("div", "item");
     if (item.url) {
@@ -159,7 +178,9 @@
     const buttons = el("span", "item-actions");
     const note = el("span", "item-note");
     note.hidden = true;
-    text.append(note);
+    const clock = el("span", "item-timer");
+    clock.hidden = true;
+    text.append(clock, note);
     wrap.append(row, buttons);
 
     const taskId = item.taskId ?? "";
@@ -168,7 +189,40 @@
       note.textContent = message;
       note.classList.toggle("error", !ok);
     };
-    const add = (action: ItemAction, glyph: string, label: string, onDone: (message: string, btn: HTMLButtonElement) => void) => {
+
+    let startedAt: string | null = null;
+    let startBtn: HTMLButtonElement | null = null;
+    let stopBtn: HTMLButtonElement | null = null;
+    let doneBtn: HTMLButtonElement | null = null;
+
+    const refreshClock = (now = Date.now()) => {
+      if (startedAt) clock.textContent = `● Timer running · ${formatClock(startedAt, now)}`;
+    };
+
+    const controller: RowController = {
+      taskId: item.taskId ?? null,
+      setRunning(at) {
+        startedAt = at;
+        const on = at !== null;
+        clock.hidden = !on;
+        if (on) refreshClock();
+        wrap.classList.toggle("running", on);
+        if (startBtn) startBtn.hidden = on;
+        if (stopBtn) stopBtn.hidden = !on;
+      },
+      setDone() {
+        row.classList.add("done");
+        mark.className = "mark ok";
+        mark.textContent = "✓";
+        wrap.classList.remove("running");
+        clock.hidden = true;
+        buttons.replaceChildren();
+        startBtn = stopBtn = doneBtn = null;
+      },
+      tick: refreshClock,
+    };
+
+    const add = (action: ItemAction, glyph: string, label: string, onDone: (message: string) => void) => {
       const btn = el("button", "item-action", glyph);
       btn.type = "button";
       btn.title = label;
@@ -177,36 +231,49 @@
         btn.disabled = true;
         const result = await bridge.taskAction(action, taskId);
         btn.disabled = false;
-        if (result.ok) onDone(result.message, btn);
+        if (result.ok) onDone(result.message);
         else setNote(result.message, false);
       });
       buttons.append(btn);
       return btn;
     };
 
-    for (const action of item.actions) {
+    // A task row can switch between "start" and "stop" when the timer changes elsewhere, so it
+    // gets both buttons and shows whichever applies. (The plain timer row has only Stop.)
+    const wanted = new Set<ItemAction>(item.actions);
+    if (item.taskId && (wanted.has("start-timer") || wanted.has("stop-timer"))) {
+      wanted.add("start-timer");
+      wanted.add("stop-timer");
+    }
+    for (const action of ["complete", "start-timer", "stop-timer"] as ItemAction[]) {
+      if (!wanted.has(action)) continue;
       if (action === "complete") {
-        add("complete", "✓", "Mark as done", (message) => {
-          row.classList.add("done");
-          mark.className = "mark ok";
-          mark.textContent = "✓";
-          buttons.replaceChildren();
+        doneBtn = add("complete", "✓", "Mark as done", (message) => {
+          controller.setDone();
           setNote(message, true);
         });
       } else if (action === "start-timer") {
-        add("start-timer", "▶", "Start the timer on this task", (message, btn) => {
-          btn.disabled = true;
-          btn.title = "Timer running";
-          btn.classList.add("on");
+        startBtn = add("start-timer", "▶", "Start the timer on this task", (message) => {
+          // The server stops any timer running elsewhere, so every other row stops showing one.
+          for (const r of rows) r.setRunning(null);
+          controller.setRunning(new Date().toISOString());
           setNote(message, true);
         });
       } else {
-        add("stop-timer", "■", "Stop the running timer", (message) => {
-          buttons.replaceChildren();
+        stopBtn = add("stop-timer", "■", "Stop the running timer", (message) => {
+          for (const r of rows) r.setRunning(null);
           setNote(message, true);
         });
       }
     }
+    // A row that arrives with the timer already running starts in that state (the clock fills in on the first live update).
+    if (item.running) {
+      controller.setRunning(new Date().toISOString());
+      clock.textContent = "● Timer running";
+    } else {
+      controller.setRunning(null);
+    }
+    rows.push(controller);
     return wrap;
   }
 
@@ -249,6 +316,7 @@
       offline.hidden = true;
     }
 
+    rows.length = 0;
     sections.replaceChildren(
       ...briefing.sections
         .filter((s) => s.items.length > 0)
@@ -264,6 +332,13 @@
     if (updated) parts.push(`updated ${updated}`);
     if (source === "sample") parts.push("sample data");
     meta.textContent = parts.join(" · ");
+
+    // Tell the main process which tasks are on screen so it can keep their state fresh.
+    bridge.watchTasks(
+      briefing.sections
+        .flatMap((sec) => sec.items.map((i) => i.taskId))
+        .filter((id): id is string => typeof id === "string"),
+    );
 
     setMood(briefing.mood);
     if (briefing.mood === "happy" && stage.classList.contains("entered") && !reducedMotion.matches) {
@@ -333,6 +408,24 @@
     stage.dataset.size = ui.size;
     window.setTimeout(reportHits, 50);
   });
+  // Live updates from the panel: the running timer and task status.
+  bridge.onLive((live) => {
+    const timer = live.timer;
+    for (const r of rows) {
+      if (r.taskId && live.tasks[r.taskId] && (live.tasks[r.taskId] === "COMPLETED" || live.tasks[r.taskId] === "CANCELLED")) {
+        r.setDone();
+        continue;
+      }
+      // Rows without a task id are the plain "timer running" row of the reminder.
+      const mine = r.taskId ? timer?.taskId === r.taskId : timer !== null;
+      r.setRunning(mine && timer ? timer.startedAt : null);
+    }
+  });
+  window.setInterval(() => {
+    const now = Date.now();
+    for (const r of rows) r.tick(now);
+  }, 1000);
+
   bridge.onUpdate(renderUpdate);
   btnInstall.addEventListener("click", () => bridge.installUpdate());
   btnLater.addEventListener("click", () => bridge.laterUpdate());

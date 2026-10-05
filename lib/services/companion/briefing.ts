@@ -26,11 +26,13 @@ interface Integration {
   run: (ctx: BriefingContext) => Promise<IntegrationResult | null>;
 }
 
+// Order matters: it is the order of the sections in the bubble. What the person is working on
+// (live task, then today's tasks) comes first, then the health checks and email.
 const INTEGRATIONS: Integration[] = [
+  { key: "tasks", title: "Today", run: tasksIntegration },
   { key: "websites", title: "Websites", section: "websites", run: websitesIntegration },
   { key: "slack", title: "Slack", section: "slack", run: slackIntegration },
   { key: "gmail", title: "Email", section: "gmail", run: gmailIntegration },
-  { key: "tasks", title: "Today", run: tasksIntegration },
 ];
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {

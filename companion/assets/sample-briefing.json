@@ -7,6 +7,37 @@
   "mood": "worried",
   "sections": [
     {
+      "key": "tasks",
+      "title": "Today",
+      "status": "todo",
+      "items": [
+        {
+          "label": "Google OAuth Client for Saloonly",
+          "detail": "Timer running · Saloonly",
+          "status": "ok",
+          "running": true,
+          "taskId": "sample",
+          "actions": [
+            "complete",
+            "stop-timer"
+          ]
+        },
+        {
+          "label": "Check overnight orders",
+          "status": "todo"
+        },
+        {
+          "label": "Send proofs to Mehta & Sons",
+          "detail": "Due today · High",
+          "status": "todo"
+        },
+        {
+          "label": "Tomorrow: Visiting card print run",
+          "status": "todo"
+        }
+      ]
+    },
+    {
       "key": "websites",
       "title": "Websites",
       "status": "warn",
@@ -53,26 +84,6 @@
           "detail": "Work · awaiting your reply",
           "status": "todo",
           "url": "https://mail.google.com"
-        }
-      ]
-    },
-    {
-      "key": "tasks",
-      "title": "Today",
-      "status": "todo",
-      "items": [
-        {
-          "label": "Check overnight orders",
-          "status": "todo"
-        },
-        {
-          "label": "Send proofs to Mehta & Sons",
-          "detail": "Due today · High",
-          "status": "todo"
-        },
-        {
-          "label": "Tomorrow: Visiting card print run",
-          "status": "todo"
         }
       ]
     }
