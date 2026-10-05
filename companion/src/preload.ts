@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld("companion", {
   remindLater: () => ipcRenderer.send("briefing:remind"),
   refresh: () => ipcRenderer.send("briefing:refresh"),
   openUrl: (url: string) => ipcRenderer.send("open-url", url),
+  showMenu: () => ipcRenderer.send("briefing:menu"),
   setInteractive: (interactive: boolean) => ipcRenderer.send("briefing:interactive", interactive),
 
   // Settings window

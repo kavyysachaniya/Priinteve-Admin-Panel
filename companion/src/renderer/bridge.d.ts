@@ -32,6 +32,7 @@ interface Briefing {
 
 type BriefingState =
   | { kind: "enter" }
+  | { kind: "leave" }
   | { kind: "loading"; attempt: number; total: number }
   | { kind: "briefing"; briefing: Briefing; source: "live" | "cache" | "fallback" | "sample" };
 
@@ -47,6 +48,7 @@ interface CompanionBridge {
   remindLater(): void;
   refresh(): void;
   openUrl(url: string): void;
+  showMenu(): void;
   setInteractive(interactive: boolean): void;
   getSettings(): Promise<{ serverUrl: string; hasToken: boolean } | null>;
   saveSettings(input: { serverUrl: string; token: string }): Promise<SettingsResult>;
