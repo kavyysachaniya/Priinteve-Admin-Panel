@@ -19,7 +19,11 @@ export async function GET(request: Request) {
       );
     }
     const { origin, searchParams } = new URL(request.url);
-    const briefing = await buildBriefing(user, { origin, fresh: searchParams.get("fresh") === "1" });
+    const briefing = await buildBriefing(user, {
+      origin,
+      fresh: searchParams.get("fresh") === "1",
+      daily: searchParams.get("daily") === "1",
+    });
     return NextResponse.json(briefing, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     return toApiErrorResponse(err);

@@ -756,3 +756,41 @@ export async function getTaskTimerContext(taskId: string, viewerId: string) {
         : null,
   };
 }
+
+/**
+ * Time logged on a task: every entry (stopped, paused and running), newest first, with a total.
+ * Staff see all time at once; clients see approved entries only, like everywhere else.
+ * The caller must already have checked the user can see the task.
+ */
+export async function getTaskTimeSummary(taskId: string, user: SessionUser) {
+  const rows = await prisma.projectTimeEntry.findMany({
+    where: { taskId, ...(user.role === "CLIENT" ? { OR: [{ status: "RUNNING" }, { approvedAt: { not: null } }] } : {}) },
+    select: {
+      id: true,
+      status: true,
+      startedAt: true,
+      endedAt: true,
+      durationSeconds: true,
+      userId: true,
+      user: { select: { name: true } },
+    },
+    orderBy: { startedAt: "desc" },
+    take: 100,
+  });
+
+  const now = Date.now();
+  const entries = rows.map((r) => ({
+    id: r.id,
+    userId: r.userId,
+    userName: r.user?.name ?? "Unknown",
+    startedAt: r.startedAt.toISOString(),
+    endedAt: r.endedAt?.toISOString() ?? null,
+    running: r.status === "RUNNING",
+    // A running entry counts up to now; finished ones use their stored duration.
+    seconds: r.status === "RUNNING" ? Math.max(0, Math.floor((now - r.startedAt.getTime()) / 1000)) : r.durationSeconds,
+  }));
+  const last = entries.find((e) => !e.running) ?? null;
+  return { entries, totalSeconds: entries.reduce((sum, e) => sum + e.seconds, 0), last };
+}
+
+export type TaskTimeSummary = Awaited<ReturnType<typeof getTaskTimeSummary>>;

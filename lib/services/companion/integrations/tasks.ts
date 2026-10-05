@@ -57,7 +57,7 @@ export async function tasksIntegration(ctx: BriefingContext): Promise<Integratio
         {
           label: timer.taskTitle ?? timer.projectName,
           detail: `Timer running · ${timer.projectName}`,
-          status: "ok",
+          status: "todo",
           url: timer.taskId ? `${ctx.appUrl}/tasks/${timer.taskId}` : `${ctx.appUrl}/projects/${timer.projectId}`,
           running: true,
           ...(timer.taskId ? { taskId: timer.taskId, actions: ["complete", "stop-timer"] as const } : { actions: ["stop-timer"] as const }),

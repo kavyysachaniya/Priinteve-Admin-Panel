@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 import { notFound, redirect } from "next/navigation";
-import { getTaskDetail, getTaskTimerContext, taskToFormValues } from "@/lib/services/tasks";
+import { getTaskDetail, getTaskTimeSummary, getTaskTimerContext, taskToFormValues } from "@/lib/services/tasks";
 import { listProjects } from "@/lib/services/projects";
 import { listTaskAttachments } from "@/lib/services/attachments";
 import { listTaskComments } from "@/lib/services/task-comments";
@@ -11,6 +11,7 @@ import { TaskWorkspace } from "@/components/tasks/task-workspace";
 import { TaskComments } from "@/components/tasks/task-comments";
 import { TaskAttachments } from "@/components/tasks/task-attachments";
 import { TaskTimerPanel } from "@/components/tasks/task-timer-panel";
+import { TaskTimeLog } from "@/components/tasks/task-time-log";
 import { ActivityTimeline } from "@/components/shared/activity-timeline";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -25,11 +26,12 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
   const task = await getTaskDetail(id, user);
   if (!task) notFound();
 
-  const [attachments, comments, projectsData, timer] = await Promise.all([
+  const [attachments, comments, projectsData, timer, timeSummary] = await Promise.all([
     listTaskAttachments(task.id),
     listTaskComments(task.id, user),
     listProjects({ pageSize: 100 }, user),
     getTaskTimerContext(task.id, user.id),
+    getTaskTimeSummary(task.id, user),
   ]);
 
   const projects = projectsData.projects.map((p) => {
@@ -73,6 +75,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
             viewerId={user.id}
             timer={timer}
           />
+          <TaskTimeLog summary={timeSummary} />
           <TaskComments
             taskId={task.id}
             viewerId={user.id}

@@ -116,6 +116,7 @@ Calls `requireAuth()` and redirects to `/login` if there is no live session. Thi
 | | `projects:timer` | ✓ | ✓ (assigned) | — |
 | | `projects:approve_time` | ✓ | — | — |
 | | `projects:delete` | ✓ | — | — |
+| Timesheet | `timesheet:view` (employees: own time only; admins: everyone) | ✓ | ✓ | — |
 | Companion | `companion:use` (own settings, accounts, devices; sections limited by the team policy) | ✓ | ✓ | — |
 | | `companion:manage` (team policy) | ✓ | — | — |
 | Settings | `settings:view`, `settings:edit` | ✓ | — | — |

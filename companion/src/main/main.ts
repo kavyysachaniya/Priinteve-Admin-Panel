@@ -29,12 +29,13 @@ import {
   hasToken,
   isAutostartInitialized,
   markAutostartInitialized,
+  markChecksShownToday,
   markShownToday,
   saveConnection,
   setRemindersPaused,
   snoozeUpdatePrompt,
   stopRemindersToday,
-  wasShownToday,
+  wasChecksShownToday,
 } from "./store";
 import {
   BRIEFING_HEIGHT,
@@ -67,6 +68,8 @@ let remindTimer: NodeJS.Timeout | null = null;
 /** What the window is currently showing, so a reminder never covers a briefing the person is reading. */
 let windowMode: "briefing" | "reminder" | "update" = "briefing";
 let briefingDocked = false;
+/** True while the briefing on screen is the day's first (it carries the checks), so Refresh keeps them. */
+let dailyBriefingOpen = false;
 
 // Live updates while the bubble is open: the renderer says which tasks are on screen, and we ask
 // the panel every 20 s (and right after an action) for the running timer and those tasks' status.
@@ -101,6 +104,7 @@ let dragOrigin: { x: number; y: number } | null = null;
 function applyDock(docked: boolean): void {
   if (docked === briefingDocked) return;
   briefingDocked = docked;
+  if (docked) dailyBriefingOpen = false;
   const win = briefingWin;
   if (!win || win.isDestroyed()) return;
   const b = win.getBounds();
@@ -206,11 +210,9 @@ async function onReady(): Promise<void> {
     log("info", "Not paired yet; opening settings");
     openSetup();
   } else if (launchedAtLogin) {
-    // Give the desktop and network a moment after sign-in, then brief only once per day.
-    setTimeout(() => {
-      if (!wasShownToday()) void showBriefing(BOOT_RETRY_DELAYS);
-      else log("info", "Already briefed today; staying in the tray.");
-    }, BOOT_DELAY_MS);
+    // Give the desktop and network a moment after sign-in, then show the briefing. It appears on
+    // every start; only the websites, Slack and email checks are limited to once a day.
+    setTimeout(() => void showBriefing(BOOT_RETRY_DELAYS), BOOT_DELAY_MS);
   } else {
     void showBriefing(BOOT_RETRY_DELAYS);
   }
@@ -332,14 +334,21 @@ async function showBriefing(delays: number[], fresh = false): Promise<void> {
   fetching = true;
   try {
     sendState({ kind: "loading", attempt: 0, total: delays.length });
+    const daily = !wasChecksShownToday() || dailyBriefingOpen;
     const result = await getBriefing(
       delays,
       (attempt, total) => sendState({ kind: "loading", attempt, total }),
       useSample,
       fresh,
+      daily,
     );
     sendState({ kind: "briefing", briefing: result.briefing, source: result.source, mode: "briefing" });
     markShownToday();
+    // Only a real, live answer counts as "the checks were shown"; an offline copy doesn't.
+    if (daily && result.source === "live") {
+      markChecksShownToday();
+      dailyBriefingOpen = true;
+    }
   } catch (err) {
     // getBriefing never throws, but keep the window usable regardless.
     log("error", `Showing briefing failed: ${describeError(err)}`);

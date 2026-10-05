@@ -198,5 +198,6 @@ export async function gmailIntegration(ctx: BriefingContext): Promise<Integratio
   return {
     section: { key: "gmail", title: "Email", status: worstStatus(accountItems), items },
     summary: importantTotal > 0 ? `${plural(importantTotal, "important email")} from yesterday` : undefined,
+    notable: importantTotal > 0 || accountItems.some((i) => i.status !== "ok"),
   };
 }

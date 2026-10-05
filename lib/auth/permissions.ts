@@ -83,6 +83,8 @@ export const PERMISSIONS = {
   "projects:delete": "Delete projects",
   "projects:timer": "Control project timer",
   "projects:approve_time": "Approve time entries for client visibility",
+  // Timesheet
+  "timesheet:view": "View timesheets (own time; admins see everyone)",
   // Companion (desktop morning briefing)
   "companion:use": "Use the desktop companion (own settings, accounts and devices)",
   "companion:manage": "Choose which companion sections employees may use",
@@ -135,6 +137,7 @@ const EMPLOYEE_PERMISSIONS: Permission[] = [
   "projects:create",
   "projects:edit",
   "projects:timer",
+  "timesheet:view",
   "companion:use",
 ];
 

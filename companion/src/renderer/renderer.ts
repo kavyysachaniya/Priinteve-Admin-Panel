@@ -137,11 +137,14 @@
 
   // ---------------------------------------------------------------- rendering
 
+  const el_ = el;
+
   // ---------------------------------------------------------------- rows (live)
   // Each task row registers a controller so live updates can flip it in place: timer running
   // (clock + stop button), or task done (struck through).
   interface RowController {
     taskId: string | null;
+    isRunning(): boolean;
     setRunning(startedAt: string | null): void;
     setDone(): void;
     tick(now: number): void;
@@ -201,6 +204,7 @@
 
     const controller: RowController = {
       taskId: item.taskId ?? null,
+      isRunning: () => startedAt !== null,
       setRunning(at) {
         startedAt = at;
         const on = at !== null;
@@ -317,6 +321,7 @@
     }
 
     rows.length = 0;
+    liveRow = null;
     sections.replaceChildren(
       ...briefing.sections
         .filter((s) => s.items.length > 0)
@@ -408,9 +413,51 @@
     stage.dataset.size = ui.size;
     window.setTimeout(reportHits, 50);
   });
+  // The running task is always on screen: if a timer is started after the bubble loaded and its task
+  // isn't listed, a row for it is added at the top of Today (and removed again when the timer stops).
+  let liveRow: { el: HTMLElement; controller: RowController; taskId: string | null } | null = null;
+
+  function ensureLiveRow(timer: NonNullable<LiveView["timer"]>) {
+    const listed = rows.some((r) => r !== liveRow?.controller && (timer.taskId ? r.taskId === timer.taskId : r.taskId === null && r.isRunning()));
+    if (listed) {
+      removeLiveRow();
+      return;
+    }
+    if (liveRow && liveRow.taskId === timer.taskId) return;
+    removeLiveRow();
+    const before = rows.length;
+    const el = renderItem({
+      label: timer.taskTitle ?? timer.projectName,
+      detail: `Timer running · ${timer.projectName}`,
+      status: "todo",
+      running: true,
+      ...(timer.taskId ? { taskId: timer.taskId, actions: ["complete", "stop-timer"] as ItemAction[] } : { actions: ["stop-timer"] as ItemAction[] }),
+    });
+    const controller = rows[before];
+    if (!controller) return;
+    let section = sections.firstElementChild as HTMLElement | null;
+    if (!section) {
+      section = el_("section", "section");
+      section.append(el_("h2", undefined, "Today"));
+      sections.append(section);
+    }
+    section.querySelector("h2")?.after(el);
+    liveRow = { el, controller, taskId: timer.taskId };
+  }
+
+  function removeLiveRow() {
+    if (!liveRow) return;
+    liveRow.el.remove();
+    const index = rows.indexOf(liveRow.controller);
+    if (index >= 0) rows.splice(index, 1);
+    liveRow = null;
+  }
+
   // Live updates from the panel: the running timer and task status.
   bridge.onLive((live) => {
     const timer = live.timer;
+    if (timer) ensureLiveRow(timer);
+    else removeLiveRow();
     for (const r of rows) {
       if (r.taskId && live.tasks[r.taskId] && (live.tasks[r.taskId] === "COMPLETED" || live.tasks[r.taskId] === "CANCELLED")) {
         r.setDone();

@@ -70,5 +70,9 @@ export async function websitesIntegration(ctx: BriefingContext): Promise<Integra
           ? "your site is up"
           : `all ${sites.length} sites are up`;
 
-  return { section: { key: "websites", title: "Websites", status: worstStatus(items), items }, summary };
+  return {
+    section: { key: "websites", title: "Websites", status: worstStatus(items), items },
+    summary,
+    notable: items.some((i) => i.status !== "ok"),
+  };
 }

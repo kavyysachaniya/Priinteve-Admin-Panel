@@ -67,7 +67,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <TooltipProvider delayDuration={200}>
       {/* print: variants release the viewport-locked, scrolling shell so printed documents
           aren't clipped to one screen and don't include app chrome. Screen layout is unchanged. */}
-      <div className="flex h-dvh w-full overflow-hidden bg-muted/30 print:block print:h-auto print:overflow-visible print:bg-white">
+      <div className="flex h-screen h-dvh min-h-0 w-full overflow-hidden bg-muted/30 print:block print:h-auto print:overflow-visible print:bg-white">
         <div className="contents print-hide">
           <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} />
         </div>

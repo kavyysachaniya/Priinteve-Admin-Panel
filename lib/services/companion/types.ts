@@ -51,6 +51,11 @@ export interface BriefingContext {
 export interface IntegrationResult {
   section: BriefingSection;
   summary?: string;
+  /**
+   * True when the section has something new or important to say (a site down, Slack errors,
+   * important email, a reconnect needed). The once-a-day checks are shown only when notable.
+   */
+  notable?: boolean;
 }
 
 const RANK: Record<ItemStatus, number> = { ok: 0, todo: 1, warn: 2, error: 3 };

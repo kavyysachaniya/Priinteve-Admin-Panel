@@ -25,6 +25,7 @@ All run with `npx tsx`. Except `test-companion.ts`, they run against the databas
 |---|---|---|---|
 | `scripts/test-flow.ts` | Customer → product → quotation → accept → convert → partial + full payment → dashboard/finance | **Yes**, before and after each run | Quotations, invoices, payments, money math, numbering, dashboard |
 | `scripts/test-project-timer.ts` | Projects, timer start/pause/resume/stop, concurrency rules, owner-only control, stats | **Only if every step passes** | Projects or timers |
+| `scripts/test-timesheet.ts` | Timesheet date presets (week/month/year/custom), the 366-day cap, DST day, grouping, hour formatting, query parsing. **No database, no network.** | Nothing to clean | Timesheet code |
 | `scripts/test-companion.ts` | Companion email scoring, time-zone days, SSRF blocking, Slack matching, encryption, website classification (local server). **No database, no external network.** | Nothing to clean | Companion services |
 | `scripts/test-accounting-phase4.ts` | Chart of accounts, auto-journals for invoices/payments/expenses, P&L, cash flow, GST, balance sheet | **No** | Accounting, expenses, reports |
 
