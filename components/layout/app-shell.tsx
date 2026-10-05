@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -59,6 +60,8 @@ function setCollapsed(next: boolean) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const collapsed = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  // The task board uses the whole screen width; every other page keeps the readable 1400px column.
+  const fullWidth = usePathname() === "/tasks";
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -73,7 +76,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Topbar />
           </div>
           <main className="flex-1 overflow-y-auto overflow-x-hidden print:overflow-visible">
-            <div className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8 overflow-x-hidden print:max-w-none print:overflow-visible print:p-0">
+            <div className={`mx-auto w-full ${fullWidth ? "max-w-none" : "max-w-[1400px]"} px-4 py-6 sm:px-6 lg:px-8 overflow-x-hidden print:max-w-none print:overflow-visible print:p-0`}>
               {children}
             </div>
           </main>

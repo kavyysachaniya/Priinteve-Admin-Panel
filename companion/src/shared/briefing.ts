@@ -15,6 +15,8 @@ export interface BriefingItem {
   taskId?: string;
   /** Buttons to show on this row. */
   actions?: ItemAction[];
+  /** True when the person's running timer is on this task. */
+  running?: boolean;
 }
 
 const ACTIONS: ItemAction[] = ["complete", "start-timer", "stop-timer"];
@@ -85,6 +87,7 @@ export function parseBriefing(input: unknown): Briefing | null {
               status: status(item.status),
               url: safeUrl(item.url),
               taskId: typeof item.taskId === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(item.taskId) ? item.taskId : undefined,
+              running: item.running === true ? true : undefined,
               actions: Array.isArray(item.actions)
                 ? item.actions.filter((a): a is ItemAction => ACTIONS.includes(a as ItemAction)).slice(0, 3)
                 : undefined,
@@ -197,4 +200,44 @@ export function compareVersions(a: string, b: string): number {
   if (pa.length !== 3 || pb.length !== 3 || [...pa, ...pb].some(Number.isNaN)) return 0;
   for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i] - pb[i];
   return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Live state (GET /api/companion/live?tasks=a,b)
+// ---------------------------------------------------------------------------
+
+export type LiveTaskStatus = "TODO" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+
+export interface LivePayload {
+  /** The person's running timer, if any (taskId is null for a project timer without a task). */
+  timer: { taskId: string | null; projectName: string; startedAt: string } | null;
+  tasks: Record<string, LiveTaskStatus>;
+}
+
+const LIVE_STATUSES: LiveTaskStatus[] = ["TODO", "IN_PROGRESS", "COMPLETED", "CANCELLED"];
+
+export function parseLive(input: unknown): LivePayload | null {
+  if (!input || typeof input !== "object") return null;
+  const raw = input as Record<string, unknown>;
+  if (!raw.tasks || typeof raw.tasks !== "object") return null;
+
+  const tasks: Record<string, LiveTaskStatus> = {};
+  for (const [id, value] of Object.entries(raw.tasks as Record<string, unknown>).slice(0, 60)) {
+    if (/^[A-Za-z0-9_-]{1,40}$/.test(id) && LIVE_STATUSES.includes(value as LiveTaskStatus)) tasks[id] = value as LiveTaskStatus;
+  }
+
+  let timer: LivePayload["timer"] = null;
+  const t = raw.timer;
+  if (t && typeof t === "object") {
+    const o = t as Record<string, unknown>;
+    const startedAt = typeof o.startedAt === "string" && !Number.isNaN(Date.parse(o.startedAt)) ? o.startedAt : null;
+    if (startedAt) {
+      timer = {
+        taskId: typeof o.taskId === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(o.taskId) ? o.taskId : null,
+        projectName: typeof o.projectName === "string" ? o.projectName.slice(0, 120) : "",
+        startedAt,
+      };
+    }
+  }
+  return { timer, tasks };
 }

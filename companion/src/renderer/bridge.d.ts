@@ -13,6 +13,12 @@ interface BriefingItem {
   url?: string;
   taskId?: string;
   actions?: ItemAction[];
+  running?: boolean;
+}
+
+interface LiveView {
+  timer: { taskId: string | null; projectName: string; startedAt: string } | null;
+  tasks: Record<string, "TODO" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED">;
 }
 
 interface BriefingSection {
@@ -71,6 +77,8 @@ interface CompanionBridge {
   laterUpdate(): void;
   setInteractive(interactive: boolean): void;
   taskAction(action: ItemAction, taskId: string): Promise<SettingsResult>;
+  watchTasks(ids: string[]): void;
+  onLive(callback: (state: LiveView) => void): () => void;
   reportHits(rects: Array<{ x: number; y: number; w: number; h: number }>): void;
   getSettings(): Promise<{ serverUrl: string; hasToken: boolean } | null>;
   saveSettings(input: { serverUrl: string; token: string }): Promise<SettingsResult>;

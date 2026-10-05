@@ -33,6 +33,12 @@ contextBridge.exposeInMainWorld("companion", {
   installUpdate: () => ipcRenderer.send("update:install"),
   laterUpdate: () => ipcRenderer.send("update:later"),
   reportHits: (rects: Array<{ x: number; y: number; w: number; h: number }>) => ipcRenderer.send("briefing:hit-rects", rects),
+  watchTasks: (ids: string[]) => ipcRenderer.send("briefing:watch-tasks", ids),
+  onLive: (callback: (state: unknown) => void) => {
+    const listener = (_event: IpcRendererEvent, state: unknown) => callback(state);
+    ipcRenderer.on("live:state", listener);
+    return () => ipcRenderer.removeListener("live:state", listener);
+  },
   taskAction: (action: string, taskId: string) => ipcRenderer.invoke("task:action", { action, taskId }),
   setInteractive: (interactive: boolean) => ipcRenderer.send("briefing:interactive", interactive),
 

@@ -21,7 +21,9 @@ async function main() {
   const { encryptSecret, decryptSecret, hashToken, safeEqual } = await import("../lib/crypto");
   const { isNewerVersion, versionFromInstallerName, compareVersions } = await import("../lib/services/companion/versions");
   const { taskDueInstant } = await import("../lib/services/notifications");
-  const { isWithinWorkHours, msUntilNextTick, parseUpdateInfo, parseReminder } = await import("../companion/src/shared/briefing");
+  const { isWithinWorkHours, msUntilNextTick, parseUpdateInfo, parseReminder, parseLive, parseBriefing } = await import("../companion/src/shared/briefing");
+  const { taskRowState } = await import("../lib/services/companion/task-rows");
+  const { parseLiveIds } = await import("../lib/services/companion/live");
 
   console.log("=== Companion offline checks ===");
 
@@ -145,6 +147,36 @@ async function main() {
   assert(parseReminder({ enabled: true, start: "bad", end: "19:00", days: [1, 9], quiet: false, briefing: null })?.start === "10:00", "reminder falls back on bad times");
   assert(parseReminder({ enabled: "yes" }) === null, "reminder payload must be well formed");
   console.log("5b) Versions, due times, work hours, reminder ticks, update payloads ✓");
+
+  // 5c. Live task rows ----------------------------------------------------------------
+  const withProject = { id: "t1", project: { id: "p" } };
+  const running = taskRowState(withProject, "t1");
+  assert(running.running === true && running.actions.join() === "complete,stop-timer", "running task offers Stop, not Start");
+  const idle = taskRowState({ id: "t2", project: { id: "p" } }, "t1");
+  assert(idle.running === undefined && idle.actions.join() === "complete,start-timer", "other tasks offer Start");
+  assert(taskRowState({ id: "t3", project: null }, null).actions.join() === "complete", "no project, no timer button");
+
+  assert(parseLiveIds(null)!.length === 0 && parseLiveIds("")!.length === 0, "no ids is fine");
+  assert(parseLiveIds("a1,b2,a1")!.join() === "a1,b2", "ids are de-duplicated");
+  assert(parseLiveIds("bad id") === null && parseLiveIds("a;b") === null, "malformed ids are refused");
+  assert(parseLiveIds(Array.from({ length: 41 }, (_, i) => "t" + i).join(",")) === null, "more than 40 ids refused");
+  assert(parseLiveIds(Array.from({ length: 40 }, (_, i) => "t" + i).join(","))!.length === 40, "40 ids allowed");
+
+  const live = parseLive({
+    timer: { taskId: "t1", projectName: "Saloonly", startedAt: "2026-10-05T07:00:00.000Z" },
+    tasks: { t1: "IN_PROGRESS", t2: "COMPLETED", "bad id": "TODO", t3: "WHATEVER" },
+  })!;
+  assert(live.timer?.taskId === "t1" && live.tasks.t2 === "COMPLETED", "live payload parsed");
+  assert(!("bad id" in live.tasks) && !("t3" in live.tasks), "invalid ids and statuses dropped");
+  assert(parseLive({ timer: { startedAt: "nope" }, tasks: {} })!.timer === null, "timer without a valid start is ignored");
+  assert(parseLive({}) === null, "payload without tasks refused");
+
+  const parsed = parseBriefing({
+    sections: [{ key: "k", title: "T", status: "todo", items: [{ label: "x", status: "ok", running: true, taskId: "abc", actions: ["complete", "bogus", "stop-timer"] }] }],
+  })!;
+  const item = parsed.sections[0].items[0];
+  assert(item.running === true && item.taskId === "abc" && item.actions?.join() === "complete,stop-timer", "briefing keeps running/taskId and drops unknown actions");
+  console.log("5c) Live task rows, live ids, live payload ✓");
 
   // 6. Website classification (local server) ----------------------------------
   const { checkWebsite } = await import("../lib/services/companion/integrations/websites");

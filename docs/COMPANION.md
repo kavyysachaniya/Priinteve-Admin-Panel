@@ -78,6 +78,12 @@ The mascot looks happy when all is well and worried when something is red. With 
   - Right-click the mascot, the bubble or the tray icon for the menu: Show briefing now, Open settings, Start with Windows, Project reminders, Quit.
   - Clicks pass through the transparent window except over the mascot and the bubble. The app tracks the cursor against their rectangles, so it works however the mouse moves.
 - **Act on tasks from the bubble.** Task rows in the briefing and the reminder have small buttons: **✓** marks the task done, **▶** starts its timer (your timer on any other task stops), and the timer row has **■** to stop the running timer. They call `POST /api/companion/task` with the device token, and the server re-checks that you can see the task and reuses the panel's own rules (clients can't track time; one running timer per person).
+- **Live rows.** While the bubble is open, the app asks the panel every 20 seconds (and right after you act, or when you open it) for your running timer and the status of the tasks on screen (`GET /api/companion/live?tasks=…`). So a timer you start or stop in the panel shows on the task row within seconds:
+  - the running task gets a green row with a ticking "Timer running" clock and a **■** button (the others keep **▶**);
+  - a task completed in the panel is struck through and loses its buttons.
+
+  Nothing is polled while the mascot is minimised. The endpoint returns only your own running timer and the status of the task ids you ask about (and may see).
+- **Section order.** Today comes first: the task with a running timer is its first row (even if it isn't due), then your checklist and overdue, today's and tomorrow's tasks. Websites, Slack and Email follow.
 - **Move and resize the mascot.**
   - Press and drag the mascot to move it. Open, it moves within the screen (the position is remembered). Minimised, it slides along the right screen edge.
   - Tray or right-click menu → **Mascot size** → Small, Medium or Large (remembered).
@@ -283,9 +289,9 @@ npm run dist      # → companion/release/Priinteve-Companion-Setup-<version>.ex
 | Page | `app/(app)/companion/` |
 | UI | `components/companion/*`: `setup-guide.tsx` is the in-page guide |
 | Actions / validation | `lib/actions/companion.ts`, `lib/validations/companion.ts` |
-| Services | `lib/services/companion/`: `settings.ts`, `devices.ts`, `accounts.ts`, `installer.ts`, `reminder.ts`, `task-actions.ts`, `versions.ts`, `briefing.ts`, `net.ts`, `time.ts`, `email-scoring.ts`, `google.ts`, `oauth-state.ts` |
+| Services | `lib/services/companion/`: `settings.ts`, `devices.ts`, `accounts.ts`, `installer.ts`, `reminder.ts`, `task-actions.ts`, `task-rows.ts`, `live.ts`, `versions.ts`, `briefing.ts`, `net.ts`, `time.ts`, `email-scoring.ts`, `google.ts`, `oauth-state.ts` |
 | Integrations | `lib/services/companion/integrations/`: `websites.ts`, `slack.ts`, `gmail.ts`, `tasks.ts` |
-| API | `app/api/companion/briefing`, `app/api/companion/reminder`, `app/api/companion/update`, `app/api/companion/task`, `app/api/companion/installer`, `app/api/companion/google/{connect,callback}` |
+| API | `app/api/companion/briefing`, `app/api/companion/reminder`, `app/api/companion/update`, `app/api/companion/task`, `app/api/companion/live`, `app/api/companion/installer`, `app/api/companion/google/{connect,callback}` |
 | Shared | `lib/crypto.ts`, `lib/services/storage.ts`, `listOpenTasksDueBefore()` in `lib/services/tasks.ts` |
 | Desktop app | `companion/` (see `companion/README.md`) |
 

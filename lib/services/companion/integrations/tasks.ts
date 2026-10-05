@@ -1,4 +1,6 @@
 import { listOpenTasksDueBefore } from "@/lib/services/tasks";
+import { getActiveTimerForUser } from "@/lib/services/projects";
+import { taskRowState } from "@/lib/services/companion/task-rows";
 import { zonedDay } from "@/lib/services/companion/time";
 import { plural, type BriefingContext, type BriefingItem, type IntegrationResult } from "@/lib/services/companion/types";
 
@@ -10,7 +12,13 @@ const PRIORITY_LABEL: Record<string, string> = { URGENT: "Urgent", HIGH: "High" 
 
 type Task = Awaited<ReturnType<typeof listOpenTasksDueBefore>>[number];
 
-function taskItem(task: Task, ctx: BriefingContext, prefix: string, status: BriefingItem["status"]): BriefingItem {
+function taskItem(
+  task: Task,
+  ctx: BriefingContext,
+  prefix: string,
+  status: BriefingItem["status"],
+  runningTaskId: string | null,
+): BriefingItem {
   const details = [prefix, task.dueTime ?? "", PRIORITY_LABEL[task.priority] ?? "", task.status === "IN_PROGRESS" ? "In progress" : ""];
   return {
     label: task.title,
@@ -18,7 +26,7 @@ function taskItem(task: Task, ctx: BriefingContext, prefix: string, status: Brie
     status,
     url: `${ctx.appUrl}/tasks/${task.id}`,
     taskId: task.id,
-    actions: task.project ? ["complete", "start-timer"] : ["complete"],
+    ...taskRowState(task, runningTaskId),
   };
 }
 
@@ -37,21 +45,38 @@ export async function tasksIntegration(ctx: BriefingContext): Promise<Integratio
 
   const checklist: BriefingItem[] = ctx.settings.checklist.map((label) => ({ label, status: "todo" }));
 
-  const tasks = await listOpenTasksDueBefore(
-    tomorrow.end,
-    ctx.user,
-    ctx.settings.plannerSource === "ALL_TASKS" ? "all" : "mine",
-  );
+  const [tasks, timer] = await Promise.all([
+    listOpenTasksDueBefore(tomorrow.end, ctx.user, ctx.settings.plannerSource === "ALL_TASKS" ? "all" : "mine"),
+    getActiveTimerForUser(ctx.user.id),
+  ]);
+  const runningTaskId = timer?.taskId ?? null;
+
+  // "Now": the running timer, always the first row of the section.
+  const liveRows: BriefingItem[] = timer
+    ? [
+        {
+          label: timer.taskTitle ?? timer.projectName,
+          detail: `Timer running · ${timer.projectName}`,
+          status: "ok",
+          url: timer.taskId ? `${ctx.appUrl}/tasks/${timer.taskId}` : `${ctx.appUrl}/projects/${timer.projectId}`,
+          running: true,
+          ...(timer.taskId ? { taskId: timer.taskId, actions: ["complete", "stop-timer"] as const } : { actions: ["stop-timer"] as const }),
+        },
+      ]
+    : [];
   const due = (t: Task) => t.dueDate?.getTime() ?? 0;
-  const overdue = tasks.filter((t) => due(t) < today.start.getTime());
-  const dueToday = tasks.filter((t) => due(t) >= today.start.getTime() && due(t) < today.end.getTime());
-  const dueTomorrow = tasks.filter((t) => due(t) >= tomorrow.start.getTime());
+  // The running task already has its own row above, so it isn't listed a second time.
+  const rest = tasks.filter((t) => t.id !== runningTaskId);
+  const overdue = rest.filter((t) => due(t) < today.start.getTime());
+  const dueToday = rest.filter((t) => due(t) >= today.start.getTime() && due(t) < today.end.getTime());
+  const dueTomorrow = rest.filter((t) => due(t) >= tomorrow.start.getTime());
 
   const items: BriefingItem[] = [
+    ...liveRows,
     ...checklist,
-    ...capped(overdue.map((t) => taskItem(t, ctx, "Overdue", "warn")), overdue.length, ctx, "overdue"),
-    ...capped(dueToday.map((t) => taskItem(t, ctx, "Today", "todo")), dueToday.length, ctx, "today"),
-    ...capped(dueTomorrow.map((t) => taskItem(t, ctx, "Tomorrow", "todo")), dueTomorrow.length, ctx, "tomorrow"),
+    ...capped(overdue.map((t) => taskItem(t, ctx, "Overdue", "warn", runningTaskId)), overdue.length, ctx, "overdue"),
+    ...capped(dueToday.map((t) => taskItem(t, ctx, "Today", "todo", runningTaskId)), dueToday.length, ctx, "today"),
+    ...capped(dueTomorrow.map((t) => taskItem(t, ctx, "Tomorrow", "todo", runningTaskId)), dueTomorrow.length, ctx, "tomorrow"),
   ];
 
   if (items.length === 0) {

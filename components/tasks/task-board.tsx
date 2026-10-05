@@ -82,7 +82,7 @@ function Column({
   const { setNodeRef, isOver } = useDroppable({ id: status });
 
   return (
-    <div className="flex w-72 shrink-0 flex-col rounded-xl border bg-muted/30 sm:w-80">
+    <div className="flex min-w-[17rem] flex-1 flex-col rounded-xl border bg-muted/30">
       <div className="flex items-center gap-2 px-3 py-2.5">
         <span className={`size-2 rounded-full ${accent}`} />
         <h3 className="text-xs font-semibold uppercase tracking-wide">{label}</h3>
@@ -103,7 +103,7 @@ function Column({
       </div>
       <div
         ref={setNodeRef}
-        className={`flex min-h-24 flex-1 flex-col gap-2 rounded-b-xl px-2 pb-2 transition ${isOver ? "bg-primary/5" : ""}`}
+        className={`flex min-h-[55vh] flex-1 flex-col gap-2 rounded-b-xl px-2 pb-2 transition ${isOver ? "bg-primary/5" : ""}`}
       >
         <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
           {tasks.map((task) => (
