@@ -3,7 +3,7 @@ import { CopyButton } from "@/components/companion/copy-button";
 import { cn } from "@/lib/utils";
 
 // Step-by-step setup shown at the top of the Companion page, with live status ticks.
-// Team steps for everyone; the server checklist only for admins.
+// Employee-side steps only (install, pair, personalise, Gmail). Server setup lives in docs/COMPANION.md.
 
 type StepState = "done" | "todo" | "blocked";
 
@@ -69,17 +69,10 @@ export interface SetupGuideProps {
   settingsSaved: boolean;
   gmailAllowed: boolean;
   gmailConnected: boolean;
-  server: {
-    encryption: boolean;
-    storage: boolean;
-    slack: boolean;
-    google: boolean;
-    bucket: string | null;
-  } | null;
 }
 
 export function SetupGuide(props: SetupGuideProps) {
-  const { appUrl, server } = props;
+  const { appUrl } = props;
   const teamSteps: StepState[] = [
     props.installerReady ? "done" : "blocked",
     props.deviceSeen ? "done" : "todo",
@@ -88,38 +81,6 @@ export function SetupGuide(props: SetupGuideProps) {
   if (props.gmailAllowed) teamSteps.push(props.gmailConnected ? "done" : "todo");
   const doneCount = teamSteps.filter((s) => s === "done").length;
   const firstOpen = teamSteps.findIndex((s) => s !== "done");
-
-  const origin = (() => {
-    try {
-      return new URL(appUrl).origin;
-    } catch {
-      return appUrl;
-    }
-  })();
-  const corsJson = JSON.stringify(
-    [
-      {
-        AllowedOrigins: [origin, "http://localhost:3000"],
-        AllowedMethods: ["PUT", "GET"],
-        AllowedHeaders: ["content-type"],
-        ExposeHeaders: ["ETag"],
-        MaxAgeSeconds: 3000,
-      },
-    ],
-    null,
-    2,
-  );
-  const bucket = server?.bucket ?? "YOUR-BUCKET";
-  const iamPolicy = JSON.stringify(
-    {
-      Version: "2012-10-17",
-      Statement: [
-        { Effect: "Allow", Action: "s3:*", Resource: [`arn:aws:s3:::${bucket}`, `arn:aws:s3:::${bucket}/*`] },
-      ],
-    },
-    null,
-    2,
-  );
 
   return (
     <section className="rounded-lg border bg-card p-5" aria-labelledby="setup-guide-title">
@@ -215,9 +176,6 @@ export function SetupGuide(props: SetupGuideProps) {
               The companion only reads. It never sends, deletes or changes mail. Turn on <strong>Private</strong> for an inbox
               to report its unread count only.
             </p>
-            {server && !server.google && (
-              <p className="text-amber-700 dark:text-amber-400">The Google sign-in isn&apos;t configured on the server yet (see Server setup below).</p>
-            )}
           </Step>
         )}
       </ol>
@@ -241,96 +199,6 @@ export function SetupGuide(props: SetupGuideProps) {
           <li>Lost or replaced a computer? Click <strong>Revoke</strong> next to it under Your computers.</li>
         </ul>
       </details>
-
-      {server && (
-        <div className="mt-5 border-t pt-4">
-          <h3 className="text-sm font-semibold">Server setup (admins)</h3>
-          <p className="mt-0.5 mb-3 text-xs text-muted-foreground">
-            One-time setup in Vercel → Project → Settings → Environment Variables. Redeploy after adding variables.
-          </p>
-          <ol className="space-y-2">
-            <Step number={1} title="Encryption key for connected accounts" state={server.encryption ? "done" : "todo"}>
-              <p>
-                Add <Mono>COMPANION_ENCRYPTION_KEY</Mono>: 32 random bytes in base64. Generate one with:
-              </p>
-              <CodeBlock value={`node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`} />
-              <p>
-                <strong>Never change it later</strong>: every connected Gmail account would need reconnecting.
-              </p>
-            </Step>
-
-            <Step number={2} title="File storage (AWS S3)" state={server.storage ? "done" : "todo"}>
-              <p>
-                Used for the desktop installer and for task attachments (images, PDF, Word, XML). Add{" "}
-                <Mono>S3_BUCKET</Mono>, <Mono>S3_REGION</Mono>, <Mono>S3_ACCESS_KEY_ID</Mono> and <Mono>S3_SECRET_ACCESS_KEY</Mono>.
-                Use these <Mono>S3_</Mono> names on Vercel, which reserves the <Mono>AWS_</Mono> ones.
-              </p>
-              <p>
-                <strong>Allow this site in the bucket.</strong> In the S3 console → bucket → <strong>Permissions</strong> →{" "}
-                <strong>Cross-origin resource sharing (CORS)</strong> → Edit, paste:
-              </p>
-              <CodeBlock value={corsJson} label="Bucket CORS" />
-              <p>
-                Give the access key&apos;s IAM user full access to the bucket (IAM → Users → the user → Add permissions →
-                Create inline policy → JSON):
-              </p>
-              <CodeBlock value={iamPolicy} label="IAM policy" />
-              <p>
-                Files are stored under the <Mono>admin-panel/</Mono> prefix, so the bucket can be shared with other apps. Keep
-                the bucket private (Block all public access on); downloads use 5-minute signed links.
-              </p>
-            </Step>
-
-            <Step number={3} title="Slack bot (for the Slack errors section)" state={server.slack ? "done" : "todo"}>
-              <ol className="list-decimal space-y-1 pl-5">
-                <li>
-                  Go to <a className="text-primary hover:underline" href="https://api.slack.com/apps" target="_blank" rel="noreferrer">api.slack.com/apps</a> → <strong>Create New App</strong> → From scratch → name it <Mono>Priinteve Companion</Mono>.
-                </li>
-                <li>
-                  <strong>OAuth &amp; Permissions → Bot Token Scopes</strong>: add <Mono>channels:history</Mono> (and{" "}
-                  <Mono>groups:history</Mono> for private channels).
-                </li>
-                <li>
-                  <strong>Install to Workspace</strong>, copy the <Mono>xoxb-…</Mono> token into <Mono>SLACK_BOT_TOKEN</Mono>.
-                </li>
-                <li>Invite the bot to each channel the team may watch. Every team member can watch any channel the bot is in.</li>
-              </ol>
-            </Step>
-
-            <Step number={4} title="Google sign-in (for Gmail)" state={server.google ? "done" : "todo"}>
-              <ol className="list-decimal space-y-1 pl-5">
-                <li>
-                  In <a className="text-primary hover:underline" href="https://console.cloud.google.com" target="_blank" rel="noreferrer">Google Cloud Console</a>, create a project and enable the <strong>Gmail API</strong>.
-                </li>
-                <li>
-                  <strong>OAuth consent screen</strong>: Internal for Google Workspace accounts, External otherwise. Add the scope{" "}
-                  <Mono>gmail.readonly</Mono> only. In Testing mode, add each team member under <strong>Test users</strong>.
-                </li>
-                <li>
-                  <strong>Credentials → Create OAuth client ID → Web application</strong>, with this authorised redirect URI:
-                </li>
-              </ol>
-              <CodeBlock value={`${appUrl}/api/companion/google/callback`} label="Redirect URI" />
-              <p>
-                Copy the client ID and secret into <Mono>GOOGLE_CLIENT_ID</Mono> and <Mono>GOOGLE_CLIENT_SECRET</Mono>. Also set{" "}
-                <Mono>APP_URL</Mono> to <Mono>{appUrl}</Mono>.
-              </p>
-              <p>
-                Testing-mode apps make people reconnect Gmail every 7 days. Publishing the app (Google verification for External
-                apps) removes that.
-              </p>
-            </Step>
-
-            <Step number={5} title="Upload the installer for the team" state={props.installerReady ? "done" : "todo"}>
-              <p>
-                On a Windows PC with Node.js 20+, from the repository: <Mono>cd companion</Mono>, <Mono>npm install</Mono>,{" "}
-                <Mono>npm run dist</Mono>. Then upload <Mono>companion/release/Priinteve-Companion-Setup-x.y.z.exe</Mono> under{" "}
-                <strong>Desktop app installer</strong> below. Use <strong>Team access</strong> to choose what employees can use.
-              </p>
-            </Step>
-          </ol>
-        </div>
-      )}
     </section>
   );
 }

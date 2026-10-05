@@ -90,7 +90,7 @@ export function InstallerUpload({ current, storageConfigured }: { current: Insta
           </Button>
         </>
       ) : (
-        <p className="text-xs text-muted-foreground">File storage isn&apos;t configured on the server (S3_BUCKET and access keys).</p>
+        <p className="text-xs text-muted-foreground">File storage isn&apos;t configured on the server (AWS_S3_BUCKET, AWS_REGION and the AWS access keys).</p>
       )}
     </div>
   );

@@ -167,7 +167,7 @@ Services live in `lib/services/`, actions in `lib/actions/`, and module componen
   - `/api/companion/briefing` (desktop app, bearer device token);
   - `/api/companion/google/{connect,callback}`;
   - `/api/companion/installer` (download).
-- **Setup guide:** the top of the page shows a step-by-step checklist with live ticks (`components/companion/setup-guide.tsx`); admins also see the server setup checklist.
+- **Setup guide:** the top of the page shows a step-by-step checklist with live ticks (`components/companion/setup-guide.tsx`).
 - **Components:** `components/companion/*`.
 - **Services:**
   - `lib/services/companion/`: settings and team policy, devices, accounts, and the briefing orchestrator;

@@ -17,12 +17,10 @@ Files never pass through the Next.js server. The browser uploads straight to S3 
 
 | Variable | Value |
 |---|---|
-| `S3_BUCKET` (or `AWS_S3_BUCKET`) | Bucket name |
-| `S3_REGION` | Bucket region, e.g. `ap-south-1` |
-| `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | An IAM user's access key |
-| `S3_KEY_PREFIX` | Optional; default `admin-panel`. Every object this panel writes is under `<prefix>/`, so the bucket can be shared with other apps. |
-
-The standard `AWS_REGION`, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` names are also read as a fallback, which is handy locally. **On Vercel, use the `S3_*` names**: Vercel reserves the `AWS_*` names for its own runtime.
+| `AWS_S3_BUCKET` | Bucket name |
+| `AWS_REGION` | Bucket region, e.g. `ap-south-1` |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | An IAM user's access key |
+| `AWS_S3_KEY_PREFIX` | Optional; default `admin-panel`. Every object this panel writes is under `<prefix>/`, so the bucket can be shared with other apps. |
 
 Storage features switch on only when the bucket, region and both keys are set. Otherwise the task page and Companion page say "File storage isn't configured".
 
@@ -31,7 +29,7 @@ Storage features switch on only when the bucket, region and both keys are set. O
 1. **Keep the bucket private:** **Block all public access** on, no bucket policy granting public reads.
 2. **CORS:** under **Permissions → Cross-origin resource sharing (CORS)**, allow the panel's origin to `PUT` (upload) and `GET`. Without this, browser uploads fail with a CORS error; the UI shows "upload to storage failed".
 
-   The Companion page's **Setup guide → Server setup → File storage** shows this JSON with the live origin filled in.
+   Uploads use a presigned **`PUT`**, so `PUT` must be in `AllowedMethods`. A rule that lists only `POST`/`GET`/`HEAD` blocks them. Keep any other origins that already use the bucket.
 
    ```json
    [

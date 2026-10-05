@@ -3,7 +3,7 @@
 A Windows desktop mascot that gives each team member a morning briefing: website health, Slack errors, Gmail across several accounts, and the day's tasks. Each person configures their own companion on the panel's **Planner → Companion** page. The panel runs every check on the server; the desktop app only displays the result.
 
 > [!TIP]
-> **The setup guide is on the Companion page itself.** It shows a step-by-step checklist with live ticks for each person (install, pair, personalise, connect Gmail). Admins also get a **Server setup** checklist with copy-ready values for this deployment: the redirect URI, bucket CORS JSON and IAM policy. This document is the reference behind it.
+> **The Companion page has a short setup guide for team members** (install, pair, personalise, connect Gmail) with live ticks. The one-time server setup (Slack, Google, S3, environment variables) is in this document, under [Setup for the admin](#setup-for-the-admin).
 
 > [!NOTE]
 > Draft replies are **not** implemented. Gmail access is read-only (`gmail.readonly`), and email ranking is rule-based (no AI model).
@@ -133,8 +133,6 @@ Tasks and the checklist are always on, and admins always have every section. Swi
 
 ## Setup for the admin
 
-The **Server setup** checklist on the Companion page walks through these steps with this deployment's values filled in.
-
 ### 1. Environment variables
 
 | Variable | Needed for | Value |
@@ -143,7 +141,7 @@ The **Server setup** checklist on the Companion page walks through these steps w
 | `COMPANION_ENCRYPTION_KEY` | Gmail connections | 32 random bytes, base64: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`. **Never change it**: every Gmail account would need reconnecting. |
 | `SLACK_BOT_TOKEN` | Slack section | The bot's `xoxb-…` token |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Gmail | Google OAuth client |
-| `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | Installer download (and task attachments) | See [STORAGE.md](./STORAGE.md) |
+| `AWS_S3_BUCKET`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Installer download (and task attachments) | See [STORAGE.md](./STORAGE.md) |
 | `COMPANION_ALLOW_PRIVATE_URLS` | Development only | `true` lets website checks reach localhost/LAN |
 
 ### 2. Database
