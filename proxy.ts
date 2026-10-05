@@ -12,7 +12,7 @@ const PUBLIC_PATHS = [
 ];
 
 // Exact paths that authenticate themselves (bearer device token checked inside the route).
-const SELF_AUTHENTICATED_PATHS = ["/api/companion/briefing"];
+const SELF_AUTHENTICATED_PATHS = ["/api/companion/briefing", "/api/companion/reminder", "/api/companion/update", "/api/companion/task"];
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname.startsWith(p)) || SELF_AUTHENTICATED_PATHS.includes(pathname);
@@ -50,6 +50,7 @@ export async function proxy(request: NextRequest) {
         pathname.startsWith("/api/time-entries") ||
         pathname.startsWith("/api/notifications") ||
         pathname.startsWith("/api/attachments") ||
+        pathname.startsWith("/account") ||
         pathname.startsWith("/api/auth");
 
       if (!isAllowedForClient) {

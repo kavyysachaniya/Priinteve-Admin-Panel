@@ -14,11 +14,19 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { TaskPriority } from "@prisma/client";
+import type { TaskPriority, TaskStatus } from "@prisma/client";
+
+const STATUS_LABEL: Record<TaskStatus, string> = {
+  TODO: "To Do",
+  IN_PROGRESS: "In Progress",
+  COMPLETED: "Completed",
+  CANCELLED: "Cancelled",
+};
 
 interface AssignableUser {
   id: string;
@@ -35,15 +43,34 @@ const ROLE_LABEL: Record<AssignableUser["role"], string> = {
 export function TaskCreateDialog({
   projects,
   fixedProjectId,
+  defaultStatus = "TODO",
+  open: controlledOpen,
+  onOpenChange,
+  showTrigger = true,
+  canStartTimer = false,
 }: {
   projects: Array<{ id: string; name: string }>;
   fixedProjectId?: string;
+  /** The status the new task starts in (used by the per-column "Add task" buttons). */
+  defaultStatus?: TaskStatus;
+  /** Controlled mode: the board opens one dialog for whichever column was clicked. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  showTrigger?: boolean;
+  /** Admins and employees can start tracking time on the new task right away. */
+  canStartTimer?: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = (next: boolean) => {
+    setInternalOpen(next);
+    onOpenChange?.(next);
+  };
   const [submitting, setSubmitting] = useState(false);
 
-  const [projectId, setProjectId] = useState(fixedProjectId ?? "");
+  // A fresh mount (the board re-keys this dialog per click) starts with the single available project selected.
+  const [projectId, setProjectId] = useState(fixedProjectId ?? (projects.length === 1 ? projects[0].id : ""));
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<TaskPriority>("MEDIUM");
@@ -51,6 +78,7 @@ export function TaskCreateDialog({
   const [dueTime, setDueTime] = useState("");
   const [assigneeId, setAssigneeId] = useState("none");
   const [mentionIds, setMentionIds] = useState<string[]>([]);
+  const [startTimer, setStartTimer] = useState(false);
   const [loaded, setLoaded] = useState<{ projectId: string; users: AssignableUser[] } | null>(null);
   const users = loaded && loaded.projectId === projectId ? loaded.users : [];
   const loadingUsers = open && Boolean(projectId) && loaded?.projectId !== projectId;
@@ -78,12 +106,14 @@ export function TaskCreateDialog({
     setDueTime("");
     setAssigneeId("none");
     setMentionIds([]);
+    setStartTimer(false);
   };
 
   const handleOpenChange = (next: boolean) => {
     if (next) reset();
     setOpen(next);
   };
+
 
   const handleProjectChange = (id: string) => {
     setProjectId(id);
@@ -113,6 +143,7 @@ export function TaskCreateDialog({
         body: JSON.stringify({
           title: title.trim(),
           description: description.trim() || undefined,
+          status: defaultStatus,
           priority,
           dueDate: dueDate || undefined,
           dueTime: dueDate && dueTime ? dueTime : undefined,
@@ -125,7 +156,26 @@ export function TaskCreateDialog({
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || "Failed to create task");
       }
+      const created = (await res.json().catch(() => null)) as { id?: string } | null;
       toast.success("Task created");
+      if (startTimer && created?.id) {
+        // Starting a timer switches off the person's timer on any other task (done by the server).
+        const timerRes = await fetch(`/api/projects/${projectId}/timer/start`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ taskId: created.id, taskDescription: title.trim() }),
+        });
+        const timerData = (await timerRes.json().catch(() => ({}))) as { error?: string; autoStoppedProjectName?: string };
+        if (timerRes.ok) {
+          toast.success(
+            timerData.autoStoppedProjectName
+              ? `Timer started. Your timer on "${timerData.autoStoppedProjectName}" was stopped.`
+              : "Timer started on the new task",
+          );
+        } else {
+          toast.error(timerData.error || "The task was created, but its timer couldn't be started.");
+        }
+      }
       setOpen(false);
       router.refresh();
     } catch (err) {
@@ -137,16 +187,18 @@ export function TaskCreateDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button size="sm" className="gap-1.5">
-          <Plus className="size-4" />
-          New Task
-        </Button>
-      </DialogTrigger>
+      {showTrigger && (
+        <DialogTrigger asChild>
+          <Button size="sm" className="gap-1.5">
+            <Plus className="size-4" />
+            New Task
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-lg">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Create Task</DialogTitle>
+            <DialogTitle>{defaultStatus === "TODO" ? "Create Task" : `Add Task to ${STATUS_LABEL[defaultStatus]}`}</DialogTitle>
             <DialogDescription>
               Add a task, set a deadline, and assign it to an admin, employee or client.
             </DialogDescription>
@@ -275,6 +327,16 @@ export function TaskCreateDialog({
               </div>
             )}
           </div>
+
+          {canStartTimer && (
+            <label className="flex cursor-pointer items-center gap-2 pb-1 text-xs">
+              <Checkbox checked={startTimer} onCheckedChange={(v) => setStartTimer(v === true)} />
+              <span>
+                Start the timer on this task now
+                <span className="text-muted-foreground"> (stops your timer on any other task)</span>
+              </span>
+            </label>
+          )}
 
           <DialogFooter className="pt-2">
             <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={submitting}>

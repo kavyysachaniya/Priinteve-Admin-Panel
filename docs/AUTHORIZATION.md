@@ -203,6 +203,8 @@ The check runs before the action's `try` block, so a denied action **throws** (t
 | `/api/calendar/feed` | GET | **none in the handler** — only the `proxy.ts` session check | 500 on error |
 | `/api/companion/briefing` | GET | **Bearer device token** (no session). Excluded from the `proxy.ts` session check by exact path; `authenticateDevice()` rejects unknown, revoked, inactive-user or no-`companion:use` tokens | **401** JSON on a bad token |
 | `/api/companion/google/connect`, `.../callback` | GET | `companion:use`, plus the team policy for Gmail; OAuth `state` checked against an httpOnly cookie | Redirect back to `/companion?notice=<code>` |
+| `/api/companion/reminder`, `/api/companion/update` | GET | **Bearer device token** (no session), same as the briefing. Excluded from the session check in `proxy.ts` by exact path | **401** JSON on a bad token; `update` also returns **400** without `?current=x.y.z` |
+| `/api/companion/task` | POST | **Bearer device token** (no session), excluded from `proxy.ts` by exact path. Body `{ action: complete \| start-timer \| stop-timer, taskId }`. The service re-checks task visibility (`getTaskDetail(id, user)`) and `tasks:edit` / `projects:timer` | **401** bad token, **400** invalid body or a business-rule message |
 | `/api/companion/installer` | GET | `companion:use` | Redirects to a 5-minute presigned S3 link; 404 if no installer was uploaded |
 | `/api/attachments/[id]` | GET | `tasks:view`, and the user must be able to see the task (`getTaskDetail(id, user)`) | Redirects to a 5-minute presigned S3 link; 400 if not found or not visible. Allowed for clients in `proxy.ts`. |
 | `/api/auth/*` | — | public (Auth.js) | |
@@ -245,7 +247,9 @@ Implemented in `lib/services/projects.ts`; details in [PROJECTS.md](./PROJECTS.m
 - **No login rate limiting or lockout** exists in the code.
 - **`callbackUrl` is not validated.** After a successful login, `app/(auth)/login/page.tsx` sets `window.location.href` to the `callbackUrl` query parameter as-is, so a crafted link can send a user to an external site after they sign in.
 - **iCal feed:** `/api/calendar/feed` has no permission check of its own. Because `proxy.ts` requires a session cookie, external calendar apps that fetch the URL without the cookie are redirected to `/login` rather than receiving the feed.
-- **Task detail page is not user-scoped:** `app/(app)/tasks/[id]/page.tsx` calls `getTaskDetail(id)` without the user, so anyone with `tasks:view`, clients included, can open any task by its URL. Task attachment downloads (`/api/attachments/[id]`) check visibility separately, but attachment names show on that page.
+- **Task page is scoped:** `app/(app)/tasks/[id]/page.tsx` calls `getTaskDetail(id, user)`, so clients only open tasks in their own projects and employees only tasks in projects they're assigned to (or assigned to or tagged on). This replaced an earlier unscoped lookup.
+- **Comments:** `tasks:view` plus the same visibility check. Clients can comment on tasks they can see even though they can't edit team tasks. Authors edit their own comments; the author or an admin deletes.
+- **My account:** `/account` actions use `requireAuth()` (any role) and always act on the session's own user id. Changing the password re-checks the current password.
 - **Companion:**
   - Device tokens are stored as SHA-256 hashes and compared in constant time.
   - Gmail tokens are AES-256-GCM encrypted with `COMPANION_ENCRYPTION_KEY`.

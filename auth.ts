@@ -111,7 +111,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   session: { strategy: "jwt" },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger }) {
       if (user) {
         token.id = user.id;
         token.role = user.role;
@@ -123,14 +123,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // The JWT otherwise carries whatever role/status the user had at sign-in. Re-read them
       // periodically so deactivation or a role change takes effect without waiting for re-login.
       if (!token.id) return null;
+      // useSession().update() (e.g. after the user changes their name) forces an immediate re-read.
+      if (trigger === "update") token.checkedAt = 0;
       if (Date.now() - (token.checkedAt ?? 0) < USER_RECHECK_INTERVAL_MS) return token;
 
       try {
         const current = await prisma.user.findUnique({
           where: { id: token.id },
-          select: { role: true, status: true, customerId: true },
+          select: { name: true, role: true, status: true, customerId: true },
         });
         if (!current || current.status !== "ACTIVE") return null;
+        token.name = current.name;
         token.role = current.role;
         token.customerId = current.customerId;
         token.checkedAt = Date.now();

@@ -1,9 +1,13 @@
 import { BrowserWindow, screen, shell } from "electron";
 import path from "node:path";
 
-const BRIEFING_WIDTH = 440;
-const BRIEFING_HEIGHT = 600;
-const EDGE_MARGIN = 8;
+export const BRIEFING_WIDTH = 440;
+export const BRIEFING_HEIGHT = 600;
+/** Height of the window while minimised: just tall enough for the (largest) mascot. */
+export const DOCKED_HEIGHT = 230;
+/** The bubble starts this far from the window's left edge, so the window may hang off-screen by that much. */
+const BUBBLE_LEFT_OVERHANG = 58;
+const EDGE_MARGIN = 0; // flush with the work-area edge so the docked mascot peeks from the screen edge
 
 const preload = path.join(__dirname, "..", "preload.js");
 const rendererDir = path.join(__dirname, "..", "renderer");
@@ -23,13 +27,38 @@ function lockDown(win: BrowserWindow): void {
   win.webContents.on("will-navigate", (event) => event.preventDefault());
 }
 
-export function createBriefingWindow(): BrowserWindow {
+/** Bottom-right corner of the work area. */
+export function defaultOpenPosition(): { x: number; y: number } {
   const { workArea } = screen.getPrimaryDisplay();
+  return {
+    x: workArea.x + workArea.width - BRIEFING_WIDTH - EDGE_MARGIN,
+    y: workArea.y + workArea.height - BRIEFING_HEIGHT - EDGE_MARGIN,
+  };
+}
+
+/** Keeps the open window (mascot and bubble) inside the work area. */
+export function clampOpenPosition(x: number, y: number): { x: number; y: number } {
+  const { workArea } = screen.getPrimaryDisplay();
+  return {
+    x: Math.round(Math.min(Math.max(x, workArea.x - BUBBLE_LEFT_OVERHANG), workArea.x + workArea.width - BRIEFING_WIDTH)),
+    y: Math.round(Math.min(Math.max(y, workArea.y), workArea.y + workArea.height - BRIEFING_HEIGHT)),
+  };
+}
+
+/** The minimised window: flush with the right screen edge, as tall as the mascot needs. */
+export function dockedBounds(bottom: number): Electron.Rectangle {
+  const { workArea } = screen.getPrimaryDisplay();
+  const y = Math.min(Math.max(bottom - DOCKED_HEIGHT, workArea.y), workArea.y + workArea.height - DOCKED_HEIGHT);
+  return { x: workArea.x + workArea.width - BRIEFING_WIDTH, y: Math.round(y), width: BRIEFING_WIDTH, height: DOCKED_HEIGHT };
+}
+
+export function createBriefingWindow(saved?: { x: number; y: number } | null): BrowserWindow {
+  const start = saved ? clampOpenPosition(saved.x, saved.y) : defaultOpenPosition();
   const win = new BrowserWindow({
     width: BRIEFING_WIDTH,
     height: BRIEFING_HEIGHT,
-    x: workArea.x + workArea.width - BRIEFING_WIDTH - EDGE_MARGIN,
-    y: workArea.y + workArea.height - BRIEFING_HEIGHT - EDGE_MARGIN,
+    x: start.x,
+    y: start.y,
     transparent: true,
     frame: false,
     resizable: false,
@@ -54,14 +83,6 @@ export function createBriefingWindow(): BrowserWindow {
   return win;
 }
 
-/** Keep the window pinned to the bottom-right if the display layout changes. */
-export function repositionBriefingWindow(win: BrowserWindow): void {
-  const { workArea } = screen.getPrimaryDisplay();
-  win.setPosition(
-    workArea.x + workArea.width - BRIEFING_WIDTH - EDGE_MARGIN,
-    workArea.y + workArea.height - BRIEFING_HEIGHT - EDGE_MARGIN,
-  );
-}
 
 export function createSetupWindow(): BrowserWindow {
   const win = new BrowserWindow({

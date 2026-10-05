@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { toast } from "sonner";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bell, CheckCheck, FolderKanban, AtSign, CheckSquare, Clock } from "lucide-react";
@@ -23,6 +24,8 @@ export function NotificationBell() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
+  // Ids already shown, so only genuinely new unread notifications pop a toast (the first load just seeds this).
+  const seenIds = useRef<Set<string> | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -31,7 +34,20 @@ export function NotificationBell() {
         const res = await fetch("/api/notifications");
         if (res.ok && mounted) {
           const data = await res.json();
-          setNotifications(data.notifications || []);
+          const items: NotificationItem[] = data.notifications || [];
+          if (seenIds.current) {
+            for (const n of items) {
+              if (n.read || seenIds.current.has(n.id)) continue;
+              const link = n.link;
+              toast(n.title, {
+                description: n.message,
+                duration: 12000,
+                action: link ? { label: "Open", onClick: () => router.push(link) } : undefined,
+              });
+            }
+          }
+          seenIds.current = new Set(items.map((n) => n.id));
+          setNotifications(items);
           setUnreadCount(data.unreadCount || 0);
         }
       } catch {
@@ -44,7 +60,7 @@ export function NotificationBell() {
       mounted = false;
       clearInterval(interval);
     };
-  }, []);
+  }, [router]);
 
   const handleMarkAllRead = async () => {
     try {
@@ -86,6 +102,13 @@ export function NotificationBell() {
         return <CheckSquare className="size-4 text-emerald-500 shrink-0" />;
       case "TASK_MENTIONED":
         return <AtSign className="size-4 text-amber-500 shrink-0" />;
+      case "TASK_DUE_SOON":
+      case "TASK_DUE_TODAY":
+        return <Clock className="size-4 text-amber-500 shrink-0" />;
+      case "TASK_OVERDUE":
+        return <Clock className="size-4 text-destructive shrink-0" />;
+      case "TASK_COMMENT":
+        return <AtSign className="size-4 text-sky-500 shrink-0" />;
       case "CLIENT_TASK_CREATED":
         return <Clock className="size-4 text-sky-500 shrink-0" />;
       default:

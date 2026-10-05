@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { toast } from "sonner";
 import { useSession, signOut } from "next-auth/react";
-import { Menu, Search, Plus, Settings, LogOut, ChevronDown } from "lucide-react";
+import { Menu, Search, Plus, Settings, LogOut, ChevronDown, UserRound } from "lucide-react";
 import { NAV_SECTIONS, QUICK_ACTIONS } from "@/lib/nav-config";
 import { ROLE_PERMISSIONS } from "@/lib/auth/permissions";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ import { ActiveTimerHeaderChip } from "@/components/projects/active-timer-header
 import { NotificationBell } from "@/components/layout/notification-bell";
 
 function currentSectionLabel(pathname: string): string {
+  if (pathname.startsWith("/account")) return "My account";
   for (const section of NAV_SECTIONS) {
     for (const item of section.items) {
       if (item.href === "/dashboard" ? pathname === "/dashboard" : pathname.startsWith(item.href)) {
@@ -149,10 +150,17 @@ export function Topbar() {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <Link href="/settings">
-                <Settings className="size-4" /> Settings
+              <Link href="/account">
+                <UserRound className="size-4" /> My account
               </Link>
             </DropdownMenuItem>
+            {role && ROLE_PERMISSIONS[role]?.includes("settings:view") && (
+              <DropdownMenuItem asChild>
+                <Link href="/settings">
+                  <Settings className="size-4" /> Settings
+                </Link>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               variant="destructive"

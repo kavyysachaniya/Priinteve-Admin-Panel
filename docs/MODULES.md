@@ -34,6 +34,7 @@ The sidebar (`lib/nav-config.tsx`) groups modules the same way as this page.
 | [Vendors](#vendors) | `/vendors` | `vendors.ts` | `vendors.ts` | `vendors:view` |
 | [Users](#users) | `/users` | `users.ts` | `users.ts` | `users:manage` |
 | [Settings](#settings) | `/settings` | `settings.ts`, `numbering.ts` | `settings.ts` | `settings:view` |
+| [My account](#my-account) | `/account` | `account.ts` | `account.ts` | sign-in only |
 
 Services live in `lib/services/`, actions in `lib/actions/`, and module components in `components/<module>/`. The login page (`/login`) is covered in [AUTHORIZATION.md](./AUTHORIZATION.md#login-flow).
 
@@ -195,15 +196,38 @@ Services live in `lib/services/`, actions in `lib/actions/`, and module componen
 ## Tasks
 
 - **Purpose:** to-dos linked to customers, orders, quotations, invoices, production jobs and projects, shown as a Trello-style board or a list.
-- **Routes:** `/tasks` (`?view=board` is the default, `?view=list` is the table; `?filter=assigned|tagged`), `/tasks/new`, `/tasks/[id]`, `/tasks/[id]/edit`. The same board is the project's Tasks tab.
-- **Components:** `components/tasks/task-board.tsx` (columns To Do / In Progress / Completed, plus Cancelled when it has tasks; `@dnd-kit` drag and drop), `task-card.tsx` (deadline, assignee, tagged people, Start/Stop timer), `task-create-dialog.tsx` (project, deadline date + time, assignee, tags), `task-list.tsx`, `task-form.tsx`, `task-detail.tsx`, `delete-task-item.tsx`.
-- **Models:** `Task` (status, `position`, priority, due date + time, reminder, tags, assignee).
-- **Rules:**
+- **Routes:** `/tasks` (`?view=board` is the default, `?view=list` is the table; `?filter=assigned|tagged`), `/tasks/new`, `/tasks/[id]`. `/tasks/[id]/edit` redirects to `/tasks/[id]`. The same board is the project's Tasks tab.
+- **Components:**
+  - `task-board.tsx`: columns To Do / In Progress / Completed, plus Cancelled when it has tasks; `@dnd-kit` drag and drop; a "+" and an "Add task" button on every column.
+  - `task-card.tsx`: deadline, assignee, tagged people, a done checkbox, Start/Stop timer.
+  - `task-create-dialog.tsx`: quick create, with a default status and an optional "start the timer now".
+  - `task-workspace.tsx`: the task page, where every field edits in place.
+  - `task-timer-panel.tsx`, `task-comments.tsx`, `task-attachments.tsx`.
+  - `task-list.tsx` and `task-form.tsx` (used by `/tasks/new`).
+- **Models:** `Task` (status, `position`, priority, due date + time, reminder, tags, assignee), `TaskComment`.
+- **The task page (`/tasks/[id]`) is the editor.** There is no separate edit page or modal.
+  - Title, description, status, priority, project, assignee, due date and time, reminder, tags and tagged people save in place: text on blur, selects and dates on change. They use `updateTaskAction` and the shared `taskFormSchema`.
+  - The page loads the task for the signed-in user (`getTaskDetail(id, user)`), so employees and clients only open tasks they can see.
+  - Users who can't edit (clients on team-owned tasks) get the same page read-only, with comments still open.
+  - Beside the fields: **Time tracking**, **Comments**, **Attachments** and **Activity**.
+- **Done checkbox.** Ticking the box on a card (or "Mark Complete" on the task page) completes the task and moves it to Completed. Unticking reopens it as To Do. It uses `toggleTaskStatusAction`, so the usual rules apply.
+- **Move to another status.** Each card has a "Move to…" menu (the ⋯ button) next to drag and drop. It calls `moveTaskAction`, so the same rules apply, and it works with a click or on touch screens. The task page has a Status field too.
+- **Add a task in any status.** The "+" in a column header opens the create dialog with that status. Clients can only add to To Do.
+- **Timer on a task.**
+  - The panel shows the running clock, with Stop for your own timer.
+  - **Starting a timer on one task stops your timer on any other** (`startProjectTimer` with `autoStopPrevious`). The panel and the dialog say so.
+  - "Start the timer on this task now" in the create dialog starts it right after the task is created.
+  - Clients can see timers but not start them. Only the person who started a timer can stop it ([PROJECTS.md](./PROJECTS.md#timer-ownership)).
+- **Comments** (`lib/services/task-comments.ts`):
+  - Anyone who can see the task can read and post, clients included. This is deliberately wider than edit.
+  - Authors edit their own; the author or an admin deletes.
+  - A new comment notifies the assignee, the creator, tagged people and earlier commenters (not the author), and is logged as `task.commented`.
+- **Other rules:**
   - Dragging calls `moveTaskAction` → `moveTask()`: it sets the status and a fractional `position` between the neighbouring cards. Clients can move only tasks they created; employees need access to the task's project; admins can move anything.
   - A task's assignee (and tagged people) can be an active admin, an employee assigned to the project, or a client user linked to the project's customer. See [BUSINESS-LOGIC.md](./BUSINESS-LOGIC.md#tasks-notes-and-calendar).
-  - Admins and employees can start a timer from a card; clients cannot. Cards show overdue deadlines in red.
-  - Comments are not built yet. **Attachments** (images, PDF, DOC/DOCX, XML, up to 25 MB) are on the task page, stored in S3. See [STORAGE.md](./STORAGE.md).
-  - The list view's checkbox still toggles between `TODO` and `COMPLETED`.
+  - **Attachments** (images, PDF, DOC/DOCX, XML, up to 25 MB) are stored in S3. See [STORAGE.md](./STORAGE.md).
+  - Deleting a task deletes its comments (cascade) and attachments.
+  - Cards show overdue deadlines in red.
 
 ## Notes
 
@@ -290,6 +314,17 @@ Services live in `lib/services/`, actions in `lib/actions/`, and module componen
 - **Rules:**
   - Admin only (`users:manage`). Passwords must be at least 8 characters.
   - You can't deactivate yourself, and there's no delete. See [AUTHORIZATION.md](./AUTHORIZATION.md#user-status-and-deactivation).
+
+## My account
+
+- **Purpose:** every signed-in user (admin, employee or client) changes their own name and password. Opened from the avatar menu in the top bar.
+- **Route:** `/account`. Its layout only requires a session (`requireAuth`); `proxy.ts` also allows it for the client role.
+- **Components:** `components/account/profile-form.tsx`, `password-form.tsx`.
+- **Rules:**
+  - Actions use `requireAuth()`, and the user id always comes from the session, so nobody can edit another account here. Email and role stay admin-managed on `/users`.
+  - Changing the password needs the current password, then at least 8 characters, entered twice.
+  - A new name reaches the session through `useSession().update()`: the `jwt` callback in `auth.ts` re-reads the name on that trigger and on its regular 60-second recheck.
+  - Both changes are logged as `account.name_changed` and `account.password_changed`, with no secrets.
 
 ## Settings
 

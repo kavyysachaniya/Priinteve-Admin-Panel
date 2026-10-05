@@ -18,7 +18,9 @@ import {
 } from "@dnd-kit/core";
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { Plus } from "lucide-react";
 import { moveTaskAction } from "@/lib/actions/tasks";
+import { TaskCreateDialog } from "@/components/tasks/task-create-dialog";
 import { TaskCardView, type BoardViewer } from "@/components/tasks/task-card";
 import type { BoardTask } from "@/lib/services/tasks";
 import type { TaskStatus } from "@prisma/client";
@@ -67,12 +69,15 @@ function Column({
   accent,
   tasks,
   viewer,
+  onAdd,
 }: {
   status: TaskStatus;
   label: string;
   accent: string;
   tasks: BoardTask[];
   viewer: BoardViewer;
+  /** Present when the viewer can add a task in this column. */
+  onAdd?: () => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
 
@@ -84,6 +89,17 @@ function Column({
         <span className="rounded-full bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
           {tasks.length}
         </span>
+        {onAdd && (
+          <button
+            type="button"
+            onClick={onAdd}
+            title={`Add a task to ${label}`}
+            aria-label={`Add a task to ${label}`}
+            className="ml-auto inline-flex size-6 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          >
+            <Plus className="size-4" />
+          </button>
+        )}
       </div>
       <div
         ref={setNodeRef}
@@ -97,13 +113,38 @@ function Column({
         {tasks.length === 0 && (
           <p className="py-6 text-center text-[11px] text-muted-foreground">Drop tasks here</p>
         )}
+        {onAdd && (
+          <button
+            type="button"
+            onClick={onAdd}
+            className="flex items-center justify-center gap-1 rounded-md border border-dashed py-1.5 text-xs text-muted-foreground transition hover:bg-muted/60 hover:text-foreground"
+          >
+            <Plus className="size-3.5" /> Add task
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
-export function TaskBoard({ tasks, viewer }: { tasks: BoardTask[]; viewer: BoardViewer }) {
+export function TaskBoard({
+  tasks,
+  viewer,
+  projects,
+  fixedProjectId,
+}: {
+  tasks: BoardTask[];
+  viewer: BoardViewer;
+  /** Projects the viewer can create tasks in. Without them the "Add task" buttons are hidden. */
+  projects?: Array<{ id: string; name: string }>;
+  fixedProjectId?: string;
+}) {
   const router = useRouter();
+  const [addStatus, setAddStatus] = useState<TaskStatus | null>(null);
+  const [addSeq, setAddSeq] = useState(0);
+  // Clients can only raise new requests (To Do); everyone else can add to any column.
+  const canAddIn = (status: TaskStatus) =>
+    Boolean(projects?.length) && (viewer.role !== "CLIENT" || status === "TODO");
   const [cols, setCols] = useState<Columns>(() => groupByStatus(tasks));
   const [activeId, setActiveId] = useState<string | null>(null);
   const snapshot = useRef<Columns>(cols);
@@ -219,9 +260,34 @@ export function TaskBoard({ tasks, viewer }: { tasks: BoardTask[]; viewer: Board
     >
       <div className="flex gap-4 overflow-x-auto pb-4">
         {visibleColumns.map((c) => (
-          <Column key={c.status} {...c} tasks={cols[c.status]} viewer={viewer} />
+          <Column
+            key={c.status}
+            {...c}
+            tasks={cols[c.status]}
+            viewer={viewer}
+            onAdd={
+              canAddIn(c.status)
+                ? () => {
+                    setAddSeq((n) => n + 1);
+                    setAddStatus(c.status);
+                  }
+                : undefined
+            }
+          />
         ))}
       </div>
+      {projects && projects.length > 0 && (
+        <TaskCreateDialog
+          key={addSeq}
+          projects={projects}
+          fixedProjectId={fixedProjectId}
+          defaultStatus={addStatus ?? "TODO"}
+          canStartTimer={viewer.role !== "CLIENT"}
+          open={addStatus !== null}
+          onOpenChange={(next) => !next && setAddStatus(null)}
+          showTrigger={false}
+        />
+      )}
       <DragOverlay>{activeTask ? <TaskCardView task={activeTask} viewer={viewer} dragging /> : null}</DragOverlay>
     </DndContext>
   );

@@ -4,9 +4,26 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AtSign, CalendarClock, FolderKanban, Loader2, Play, Square } from "lucide-react";
+import { AtSign, CalendarClock, FolderKanban, Loader2, MoreHorizontal, Play, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Checkbox } from "@/components/ui/checkbox";
+import { moveTaskAction, toggleTaskStatusAction } from "@/lib/actions/tasks";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import type { TaskStatus } from "@prisma/client";
+
+const MOVE_TARGETS: Array<{ status: TaskStatus; label: string }> = [
+  { status: "TODO", label: "To Do" },
+  { status: "IN_PROGRESS", label: "In Progress" },
+  { status: "COMPLETED", label: "Completed" },
+  { status: "CANCELLED", label: "Cancelled" },
+];
 import { TaskPriorityBadge } from "@/components/shared/status-badge";
 import type { BoardTask } from "@/lib/services/tasks";
 
@@ -73,6 +90,39 @@ export function TaskCardView({
     task.status !== "COMPLETED" &&
     task.status !== "CANCELLED";
 
+  // Ticking the box completes the task (moves it to Completed); unticking reopens it as To Do.
+  // The server applies the same rules as elsewhere (clients can only change tasks they created).
+  const canCheck = viewer.role !== "CLIENT" || task.createdById === viewer.id;
+  const checked = task.status === "COMPLETED";
+  const toggleDone = async () => {
+    setBusy(true);
+    try {
+      const res = await toggleTaskStatusAction(task.id);
+      if (!res.success) throw new Error(res.message);
+      toast.success(checked ? "Task reopened" : "Task completed");
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not update the task");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // "Move to": change the status without dragging (works with a click or on touch screens).
+  const moveTo = async (status: TaskStatus, label: string) => {
+    setBusy(true);
+    try {
+      const res = await moveTaskAction(task.id, { status, aboveId: null, belowId: null });
+      if (!res.success) throw new Error(res.message);
+      toast.success(`Moved to ${label}`);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not move the task");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const startTimer = async () => {
     if (!task.projectId) return;
     setBusy(true);
@@ -115,15 +165,56 @@ export function TaskCardView({
       } ${running ? "border-emerald-500/50" : ""}`}
     >
       <div className="flex items-start justify-between gap-2">
-        <Link
-          href={`/tasks/${task.id}`}
-          className={`font-medium leading-snug hover:underline ${
-            task.status === "COMPLETED" ? "text-muted-foreground line-through" : "text-foreground"
-          }`}
-        >
-          {task.title}
-        </Link>
-        <TaskPriorityBadge priority={task.priority} />
+        <div className="flex min-w-0 items-start gap-2">
+          {canCheck && (
+            <Checkbox
+              checked={checked}
+              disabled={busy}
+              aria-label={checked ? "Mark task as not done" : "Mark task as done"}
+              title={checked ? "Reopen task" : "Mark as done"}
+              className="mt-0.5"
+              // Keep a click on the box from starting a drag of the card.
+              onPointerDown={(e) => e.stopPropagation()}
+              onCheckedChange={toggleDone}
+            />
+          )}
+          <Link
+            href={`/tasks/${task.id}`}
+            className={`font-medium leading-snug hover:underline ${
+              checked ? "text-muted-foreground line-through" : "text-foreground"
+            }`}
+          >
+            {task.title}
+          </Link>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <TaskPriorityBadge priority={task.priority} />
+          {canCheck && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  disabled={busy}
+                  aria-label="Move task to another status"
+                  title="Move to…"
+                  // Keep a click on the menu button from starting a drag of the card.
+                  onPointerDown={(e) => e.stopPropagation()}
+                  className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-50"
+                >
+                  <MoreHorizontal className="size-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground">Move to</DropdownMenuLabel>
+                {MOVE_TARGETS.filter((t) => t.status !== task.status).map((t) => (
+                  <DropdownMenuItem key={t.status} onSelect={() => void moveTo(t.status, t.label)}>
+                    {t.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
       </div>
 
       {task.project && (

@@ -18,7 +18,8 @@ export type EntityType =
   | "note"
   | "calendar_event"
   | "project"
-  | "companion";
+  | "companion"
+  | "user";
 
 export type ActivityInput = {
   type: string;

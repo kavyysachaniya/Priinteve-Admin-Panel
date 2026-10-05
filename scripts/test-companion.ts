@@ -19,6 +19,9 @@ async function main() {
   const { isBlockedAddress } = await import("../lib/services/companion/net");
   const { buildKeywordMatcher, plainSlackText } = await import("../lib/services/companion/integrations/slack");
   const { encryptSecret, decryptSecret, hashToken, safeEqual } = await import("../lib/crypto");
+  const { isNewerVersion, versionFromInstallerName, compareVersions } = await import("../lib/services/companion/versions");
+  const { taskDueInstant } = await import("../lib/services/notifications");
+  const { isWithinWorkHours, msUntilNextTick, parseUpdateInfo, parseReminder } = await import("../companion/src/shared/briefing");
 
   console.log("=== Companion offline checks ===");
 
@@ -104,6 +107,44 @@ async function main() {
   assert(rejected, "tampered ciphertext must be rejected");
   assert(safeEqual(hashToken("a"), hashToken("a")) && !safeEqual(hashToken("a"), hashToken("b")), "safeEqual");
   console.log("5) Secret encryption and token comparison ✓");
+
+  // 5b. Auto-update versions, due times, work hours, reminder ticks ----------------
+  assert(versionFromInstallerName("Priinteve-Companion-Setup-0.0.2.exe") === "0.0.2", "version from installer name");
+  assert(versionFromInstallerName("Priinteve-Companion-Setup-latest.exe") === null, "reject an unversioned name");
+  assert(versionFromInstallerName("Setup 1.2.3.exe") === null, "reject a foreign file name");
+  assert(isNewerVersion("0.0.2", "0.0.1"), "0.0.2 is newer than 0.0.1");
+  assert(isNewerVersion("0.1.0", "0.0.9"), "minor beats patch");
+  assert(isNewerVersion("1.0.0", "0.9.9"), "major beats minor");
+  assert(!isNewerVersion("0.0.1", "0.0.1"), "same version is not an update");
+  assert(!isNewerVersion("0.0.1", "0.1.0"), "never offer a downgrade");
+  assert(!isNewerVersion("garbage", "0.0.1"), "malformed version is ignored");
+  assert(compareVersions("0.0.10", "0.0.9")! > 0, "compare numerically, not as text");
+
+  // 10:30 IST on 5 Oct 2026 is 05:00 UTC.
+  assert(taskDueInstant(new Date("2026-10-05"), "10:30")?.toISOString() === "2026-10-05T05:00:00.000Z", "task due instant in IST");
+  assert(taskDueInstant(new Date("2026-10-05"), null) === null, "no time means no instant");
+  assert(taskDueInstant(new Date("2026-10-05"), "25:99") === null || taskDueInstant(new Date("2026-10-05"), "xx") === null, "bad time ignored");
+
+  const hours = { start: "10:00", end: "19:00", days: [1, 2, 3, 4, 5, 6] };
+  const at = (iso: string) => new Date(iso); // local time, no zone suffix
+  assert(isWithinWorkHours(at("2026-10-05T11:00:00"), hours), "Monday 11:00 is inside");
+  assert(!isWithinWorkHours(at("2026-10-05T09:59:00"), hours), "before the start is outside");
+  assert(isWithinWorkHours(at("2026-10-05T18:59:00"), hours), "just before the end is inside");
+  assert(!isWithinWorkHours(at("2026-10-05T19:00:00"), hours), "the end time is exclusive");
+  assert(!isWithinWorkHours(at("2026-10-04T12:00:00"), hours), "Sunday is not a work day");
+
+  assert(msUntilNextTick(at("2026-10-05T10:07:30")) === 22.5 * 60_000, "next tick from 10:07:30 is 22.5 min away");
+  assert(msUntilNextTick(at("2026-10-05T10:30:00")) === 30 * 60_000, "exactly :30 waits for :00");
+  assert(msUntilNextTick(at("2026-10-05T10:59:59")) === 1000, "never less than a second");
+
+  const sha = "a".repeat(64);
+  assert(parseUpdateInfo({ updateAvailable: true, version: "0.0.2", sha256: sha, url: "https://x.s3.amazonaws.com/a.exe" })?.version === "0.0.2", "valid update accepted");
+  assert(parseUpdateInfo({ updateAvailable: true, version: "0.0.2", sha256: sha, url: "http://evil.example/a.exe" }) === null, "plain http download refused");
+  assert(parseUpdateInfo({ updateAvailable: true, version: "0.0.2", sha256: "zz", url: "https://x/a.exe" }) === null, "bad checksum refused");
+  assert(parseUpdateInfo({ updateAvailable: false }) === null, "no update");
+  assert(parseReminder({ enabled: true, start: "bad", end: "19:00", days: [1, 9], quiet: false, briefing: null })?.start === "10:00", "reminder falls back on bad times");
+  assert(parseReminder({ enabled: "yes" }) === null, "reminder payload must be well formed");
+  console.log("5b) Versions, due times, work hours, reminder ticks, update payloads ✓");
 
   // 6. Website classification (local server) ----------------------------------
   const { checkWebsite } = await import("../lib/services/companion/integrations/websites");

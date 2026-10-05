@@ -8,6 +8,8 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   try {
     const user = await requireAuth();
+    // Creates (once each) "due soon", "due today" and "overdue" notifications for the user's tasks.
+    await notificationService.ensureDueNotifications(user.id);
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get("limit") ?? "20", 10);
 

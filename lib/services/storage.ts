@@ -74,7 +74,7 @@ function contentDisposition(fileName: string, inline: boolean): string {
 }
 
 /** Presigned GET that names the file and opens inline (images, PDF) or downloads it. */
-export async function createDownloadUrl(key: string, fileName: string, options: { inline?: boolean; contentType?: string } = {}) {
+export async function createDownloadUrl(key: string, fileName: string, options: { inline?: boolean; contentType?: string; expiresInSeconds?: number } = {}) {
   const { client, bucket } = s3();
   return getSignedUrl(
     client,
@@ -84,7 +84,7 @@ export async function createDownloadUrl(key: string, fileName: string, options: 
       ResponseContentDisposition: contentDisposition(fileName, options.inline ?? false),
       ...(options.contentType ? { ResponseContentType: options.contentType } : {}),
     }),
-    { expiresIn: DOWNLOAD_URL_TTL_SECONDS },
+    { expiresIn: options.expiresInSeconds ?? DOWNLOAD_URL_TTL_SECONDS },
   );
 }
 
