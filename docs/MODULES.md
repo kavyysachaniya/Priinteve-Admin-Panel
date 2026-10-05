@@ -21,6 +21,7 @@ The sidebar (`lib/nav-config.tsx`) groups modules the same way as this page.
 | [Production](#production) | `/production` | `production.ts` | `production.ts` | `production:view` |
 | [Deliveries](#deliveries) | `/deliveries` | `deliveries.ts` | `deliveries.ts` | `deliveries:view` |
 | [Planner](#planner) | `/planner` | `calendar.ts` | — | sign-in only |
+| [Companion](#companion) | `/companion` | `companion/*` | `companion.ts` | `companion:use` |
 | [Calendar](#calendar) | `/calendar` | `calendar.ts` | `calendar.ts` | `calendar:view` |
 | [Tasks](#tasks) | `/tasks` | `tasks.ts` | `tasks.ts` | `tasks:view` |
 | [Notes](#notes) | `/notes` | `notes.ts` | `notes.ts` | `notes:view` |
@@ -158,6 +159,26 @@ Services live in `lib/services/`, actions in `lib/actions/`, and module componen
 - **Data:** tasks due, calendar events, orders due for completion, deliveries that day, and up to 5 pinned notes (`getPlannerDataForDate()` in `calendar.ts`).
 - **Rules:** no page-level permission gate. The sidebar shows the link to users with `tasks:view`.
 
+## Companion
+
+- **Purpose:** each person's settings for the Windows desktop Morning Companion, which shows a daily briefing of websites, Slack errors, Gmail and tasks. Full guide: [COMPANION.md](./COMPANION.md).
+- **Routes:**
+  - `/companion` (page);
+  - `/api/companion/briefing` (desktop app, bearer device token);
+  - `/api/companion/google/{connect,callback}`;
+  - `/api/companion/installer` (download).
+- **Setup guide:** the top of the page shows a step-by-step checklist with live ticks (`components/companion/setup-guide.tsx`); admins also see the server setup checklist.
+- **Components:** `components/companion/*`.
+- **Services:**
+  - `lib/services/companion/`: settings and team policy, devices, accounts, and the briefing orchestrator;
+  - `integrations/`: one file per integration;
+  - `listOpenTasksDueBefore()` in `tasks.ts`.
+- **Rules:**
+  - Everything is per user.
+  - Admins choose which sections employees may use (`CompanionTeamPolicy`, `companion:manage`).
+  - Clients have no access.
+  - "All team tasks" is honoured for admins only.
+
 ## Calendar
 
 - **Purpose:** month/week calendar of everything with a date.
@@ -181,7 +202,7 @@ Services live in `lib/services/`, actions in `lib/actions/`, and module componen
   - Dragging calls `moveTaskAction` → `moveTask()`: it sets the status and a fractional `position` between the neighbouring cards. Clients can move only tasks they created; employees need access to the task's project; admins can move anything.
   - A task's assignee (and tagged people) can be an active admin, an employee assigned to the project, or a client user linked to the project's customer. See [BUSINESS-LOGIC.md](./BUSINESS-LOGIC.md#tasks-notes-and-calendar).
   - Admins and employees can start a timer from a card; clients cannot. Cards show overdue deadlines in red.
-  - Comments and file attachments are not built yet.
+  - Comments are not built yet. **Attachments** (images, PDF, DOC/DOCX, XML, up to 25 MB) are on the task page, stored in S3. See [STORAGE.md](./STORAGE.md).
   - The list view's checkbox still toggles between `TODO` and `COMPLETED`.
 
 ## Notes

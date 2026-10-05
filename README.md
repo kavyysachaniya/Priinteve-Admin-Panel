@@ -115,6 +115,8 @@ Production runs on Vercel (project `priinteve-admin-panel`), which deploys every
 | [docs/AUTHORIZATION.md](./docs/AUTHORIZATION.md) | Login, sessions, roles, permission matrix, route and action protection |
 | [docs/DOCUMENTS.md](./docs/DOCUMENTS.md) | Quotation/invoice template, printing, PDF export |
 | [docs/PROJECTS.md](./docs/PROJECTS.md) | Projects and time tracking |
+| [docs/STORAGE.md](./docs/STORAGE.md) | AWS S3 file storage: task attachments, installer, bucket CORS and IAM |
+| [docs/COMPANION.md](./docs/COMPANION.md) | Desktop Morning Companion: team guide, Slack/Google/Meta setup, installer |
 | [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) | Local setup, commands, adding features |
 | [docs/TESTING.md](./docs/TESTING.md) | Verification scripts and manual checks |
 | [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) | Production requirements and workflow |
@@ -126,7 +128,7 @@ Production runs on Vercel (project `priinteve-admin-panel`), which deploys every
 ```text
 app/(auth)/          login page
 app/(app)/           signed-in pages, one folder per module
-app/api/             Auth.js, project timer API, iCal feed
+app/api/             Auth.js, project timer API, iCal feed, companion briefing + OAuth
 components/          UI by module; documents/ = quotation/invoice template; ui/ = shadcn
 features/users/      user form and status toggle
 lib/services/        business logic and database access
@@ -138,5 +140,6 @@ lib/pdf/exporter.ts  PDF export
 prisma/              schema and seed scripts
 scripts/             verification scripts
 docs/                project documentation
+companion/           Windows desktop companion (Electron, separate package)
 proxy.ts, auth.ts    request guard and Auth.js config
 ```

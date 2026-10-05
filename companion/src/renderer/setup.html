@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:"
+    />
+    <title>Priinteve Companion settings</title>
+    <link rel="stylesheet" href="setup.css" />
+    <script src="setup.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <h1>Connect to your panel</h1>
+      <p class="hint">
+        Everything else (your name, checklist, websites, Slack, Gmail) is set on the
+        <strong>Companion</strong> page of the admin panel. Changes there apply on the next briefing.
+      </p>
+
+      <form id="form" novalidate>
+        <label for="server">Panel address</label>
+        <input id="server" type="url" placeholder="https://priinteve-admin-panel.vercel.app" autocomplete="off" required />
+
+        <label for="token">Device token</label>
+        <input id="token" type="password" autocomplete="off" spellcheck="false" />
+        <p id="token-hint" class="hint small">Create a device on the Companion page and paste its token here.</p>
+
+        <p id="status" class="status" role="status"></p>
+
+        <div class="row">
+          <button id="test" type="button" class="btn">Test connection</button>
+          <button type="submit" class="btn primary">Save</button>
+        </div>
+      </form>
+
+      <button id="open-panel" type="button" class="link">Open the Companion page in the panel</button>
+    </main>
+  </body>
+</html>

@@ -18,7 +18,7 @@ Related: [DEVELOPMENT.md](./DEVELOPMENT.md) · [DATABASE.md](./DATABASE.md) · [
 | Node.js | ≥ 20.9.0 |
 | Database | PostgreSQL on Neon |
 | Background jobs, cron, queues | None |
-| File storage | None (the `Attachment` model is unused) |
+| File storage | AWS S3 for task attachments and the companion installer, when `S3_*` is set ([STORAGE.md](./STORAGE.md)) |
 
 ## Environment variables
 
@@ -31,6 +31,8 @@ Set these on the host. Never commit real values; `.env.example` holds placeholde
 | `AUTH_SECRET` | A strong random secret, different from development. Rotating it signs everyone out. |
 | `NEXTAUTH_URL` | The public HTTPS URL of the app. Optional on Vercel, where it isn't currently set (Auth.js uses the request host); set it on other hosts. |
 | `AUTH_TRUST_HOST` | `true` on **non-Vercel** hosts. |
+| `APP_URL`, `COMPANION_ENCRYPTION_KEY`, `SLACK_BOT_TOKEN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Desktop companion, all optional. Each integration switches on when its variables are set. See [COMPANION.md](./COMPANION.md#1-environment-variables). **Don't change `COMPANION_ENCRYPTION_KEY` once set**: stored Gmail tokens become unreadable. |
+| `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | File storage for task attachments and the companion installer. Use the `S3_*` names on Vercel, which reserves `AWS_*`; locally the standard `AWS_REGION` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` also work. The bucket needs CORS for the panel origin. See [STORAGE.md](./STORAGE.md). |
 
 Why `AUTH_TRUST_HOST`: Auth.js v5 trusts the request host only if one of `AUTH_URL`, `AUTH_TRUST_HOST`, `VERCEL` or `CF_PAGES` is set, or `NODE_ENV` isn't `production` (`node_modules/@auth/core/lib/utils/env.js`). `NEXTAUTH_URL` alone does not count. Vercel sets `VERCEL` automatically; other hosts need `AUTH_TRUST_HOST=true` (or `AUTH_URL`), otherwise Auth.js rejects requests with an "UntrustedHost" error.
 

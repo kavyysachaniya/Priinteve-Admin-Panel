@@ -75,6 +75,17 @@ Related: [BUSINESS-LOGIC.md](./BUSINESS-LOGIC.md) · [DEVELOPMENT.md](./DEVELOPM
 | `Project` | Client projects | See [PROJECTS.md](./PROJECTS.md) |
 | `ProjectTimeEntry` | Timer sessions for a project | `status` `RUNNING`/`PAUSED`/`COMPLETED`, `durationSeconds`; `approvedAt` / `approvedById` (clients see approved entries only) |
 
+### Companion
+
+All companion rows belong to one user and are deleted with the user (`onDelete: Cascade`). See [COMPANION.md](./COMPANION.md).
+
+| Model | Purpose | Notes |
+|---|---|---|
+| `CompanionSettings` | One person's briefing settings | `userId` unique. List settings are `Json` columns re-validated with Zod on every read. `plannerSource` `MY_TASKS`/`ALL_TASKS`. |
+| `CompanionTeamPolicy` | Which sections employees may use, and the current installer in S3 (`installerKey`, `installerFileName`, `installerSize`, `installerUploadedAt`) | Single row, id `"default"`; absent means the defaults |
+| `CompanionDevice` | Paired desktop computers | `tokenHash` (SHA-256 of the bearer token), `revokedAt`, `lastSeenAt` (updated at most every 5 minutes) |
+| `CompanionGmailAccount` | Connected Gmail accounts | `encRefreshToken` (AES-256-GCM); unique `(userId, email)`; `excludeFromProcessing` = counts only; `status` `CONNECTED`/`NEEDS_RECONNECT` |
+
 ### Expenses and accounting
 
 | Model | Purpose | Notes |
@@ -94,7 +105,7 @@ Related: [BUSINESS-LOGIC.md](./BUSINESS-LOGIC.md) · [DEVELOPMENT.md](./DEVELOPM
 | `CompanySettings` | Letterhead, bank details, default terms, default GST rate, default validity/due days | Treated as a single row: `getCompanySettings()` reads the first row and creates one with defaults if none exists |
 | `NumberingSequence` | Next number per document type | `key` unique: `quotation`, `invoice`, `order`, `production`, `delivery`, `expense`, `journal` |
 | `ActivityLog` | Activity feed | `type`, `message`, `entityType`/`entityId`, plus optional foreign keys to the related records and the user |
-| `Attachment` | File attachments | Defined in the schema; no code reads or writes it |
+| `Attachment` | Files in S3 attached to records | Used for tasks only (`entityType` `"task"`, no foreign key; `deleteTask()` removes them). `storageKey` (unique S3 key), `fileUrl` = `s3://bucket/key`, `uploadedById`. See [STORAGE.md](./STORAGE.md). |
 
 ## Core relationships
 

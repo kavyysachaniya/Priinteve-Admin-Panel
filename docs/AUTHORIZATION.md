@@ -116,6 +116,8 @@ Calls `requireAuth()` and redirects to `/login` if there is no live session. Thi
 | | `projects:timer` | ✓ | ✓ (assigned) | — |
 | | `projects:approve_time` | ✓ | — | — |
 | | `projects:delete` | ✓ | — | — |
+| Companion | `companion:use` (own settings, accounts, devices; sections limited by the team policy) | ✓ | ✓ | — |
+| | `companion:manage` (team policy) | ✓ | — | — |
 | Settings | `settings:view`, `settings:edit` | ✓ | — | — |
 | Users | `users:manage` | ✓ | — | — |
 
@@ -199,6 +201,10 @@ The check runs before the action's `try` block, so a denied action **throws** (t
 | `/api/projects/[id]/time-entries/approve` | POST | `projects:approve_time` | Approves all completed, unapproved entries of the project |
 | `/api/projects/[id]/assignable-users` | GET | `tasks:view` | Admins, assigned employees and the project's client users (id, name, role); 404 if the project isn't visible |
 | `/api/calendar/feed` | GET | **none in the handler** — only the `proxy.ts` session check | 500 on error |
+| `/api/companion/briefing` | GET | **Bearer device token** (no session). Excluded from the `proxy.ts` session check by exact path; `authenticateDevice()` rejects unknown, revoked, inactive-user or no-`companion:use` tokens | **401** JSON on a bad token |
+| `/api/companion/google/connect`, `.../callback` | GET | `companion:use`, plus the team policy for Gmail; OAuth `state` checked against an httpOnly cookie | Redirect back to `/companion?notice=<code>` |
+| `/api/companion/installer` | GET | `companion:use` | Redirects to a 5-minute presigned S3 link; 404 if no installer was uploaded |
+| `/api/attachments/[id]` | GET | `tasks:view`, and the user must be able to see the task (`getTaskDetail(id, user)`) | Redirects to a 5-minute presigned S3 link; 400 if not found or not visible. Allowed for clients in `proxy.ts`. |
 | `/api/auth/*` | — | public (Auth.js) | |
 
 `toApiErrorResponse(err)` maps `AuthenticationError` → 401, `AuthorizationError` → 403 and any other error → 400 with the error's message. A request without a valid session cookie never reaches a handler; `proxy.ts` redirects it to `/login`.
@@ -239,5 +245,12 @@ Implemented in `lib/services/projects.ts`; details in [PROJECTS.md](./PROJECTS.m
 - **No login rate limiting or lockout** exists in the code.
 - **`callbackUrl` is not validated.** After a successful login, `app/(auth)/login/page.tsx` sets `window.location.href` to the `callbackUrl` query parameter as-is, so a crafted link can send a user to an external site after they sign in.
 - **iCal feed:** `/api/calendar/feed` has no permission check of its own. Because `proxy.ts` requires a session cookie, external calendar apps that fetch the URL without the cookie are redirected to `/login` rather than receiving the feed.
+- **Task detail page is not user-scoped:** `app/(app)/tasks/[id]/page.tsx` calls `getTaskDetail(id)` without the user, so anyone with `tasks:view`, clients included, can open any task by its URL. Task attachment downloads (`/api/attachments/[id]`) check visibility separately, but attachment names show on that page.
+- **Companion:**
+  - Device tokens are stored as SHA-256 hashes and compared in constant time.
+  - Gmail tokens are AES-256-GCM encrypted with `COMPANION_ENCRYPTION_KEY`.
+  - Website checks refuse private and internal addresses (SSRF), but don't pin DNS between the check and the request.
+  - All team members share one Slack bot, so anyone with the Slack section can watch any channel the bot was invited to.
+  - Details: [COMPANION.md](./COMPANION.md#security).
 - **`AUTH_SECRET`** signs and encrypts every session. Changing it signs everyone out. Never commit it; `.env` is git-ignored and only `.env.example` (placeholders) is tracked.
 - **Passwords** are hashed with bcrypt in `lib/services/users.ts` and never returned by user queries; they `select` explicit fields without `passwordHash`.

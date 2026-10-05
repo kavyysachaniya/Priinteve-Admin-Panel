@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     "prisma/**",
+    // Desktop companion app: separate package with its own tsconfig.
+    "companion/**",
   ]),
 ]);
 
