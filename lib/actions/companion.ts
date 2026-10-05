@@ -127,7 +127,7 @@ export type InstallerUploadTicket =
   | { success: true; key: string; uploadUrl: string; contentType: string }
   | { success: false; message: string };
 
-export async function requestInstallerUploadAction(values: { fileName: string; size: number }): Promise<InstallerUploadTicket> {
+export async function requestInstallerUploadAction(values: { fileName: string; size: number; sha256: string }): Promise<InstallerUploadTicket> {
   await requirePermission("companion:manage");
   const parsed = companionInstallerUploadSchema.safeParse(values);
   if (!parsed.success) return { success: false, message: parsed.error.issues[0]?.message ?? "Invalid file." };
@@ -139,14 +139,18 @@ export async function requestInstallerUploadAction(values: { fileName: string; s
   }
 }
 
-const installerConfirmSchema = z.object({ key: z.string().trim().min(1).max(400), fileName: z.string().trim().min(1).max(150) });
+const installerConfirmSchema = z.object({
+  key: z.string().trim().min(1).max(400),
+  fileName: z.string().trim().min(1).max(150),
+  sha256: z.string().trim().toLowerCase().length(64),
+});
 
-export async function confirmInstallerUploadAction(values: { key: string; fileName: string }): Promise<FormActionResult> {
+export async function confirmInstallerUploadAction(values: { key: string; fileName: string; sha256: string }): Promise<FormActionResult> {
   const user = await requirePermission("companion:manage");
   const parsed = installerConfirmSchema.safeParse(values);
   if (!parsed.success) return { success: false, message: "Invalid upload." };
   try {
-    await confirmInstallerUpload(user.id, parsed.data.key, parsed.data.fileName);
+    await confirmInstallerUpload(user.id, parsed.data.key, parsed.data.fileName, parsed.data.sha256);
     revalidatePath("/companion");
     return { success: true };
   } catch (err) {

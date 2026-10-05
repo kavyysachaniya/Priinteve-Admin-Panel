@@ -11,6 +11,7 @@ import {
   storageKey,
 } from "@/lib/services/storage";
 import { INSTALLER_MAX_BYTES } from "@/lib/validations/companion";
+import { isNewerVersion, SHA256_HEX, versionFromInstallerName } from "@/lib/services/companion/versions";
 
 // The Windows installer for the desktop companion, kept in S3. An admin uploads it from the
 // Companion page; everyone with `companion:use` downloads it through a short-lived link.
@@ -21,10 +22,21 @@ const INSTALLER_PREFIX = storageKey("companion", "installer");
 export async function getInstallerInfo() {
   const row = await prisma.companionTeamPolicy.findUnique({
     where: { id: "default" },
-    select: { installerKey: true, installerFileName: true, installerSize: true, installerUploadedAt: true },
+    select: {
+      installerKey: true,
+      installerFileName: true,
+      installerSize: true,
+      installerUploadedAt: true,
+      installerVersion: true,
+    },
   });
   if (!row?.installerKey || !row.installerFileName) return null;
-  return { fileName: row.installerFileName, size: row.installerSize, uploadedAt: row.installerUploadedAt };
+  return {
+    fileName: row.installerFileName,
+    size: row.installerSize,
+    uploadedAt: row.installerUploadedAt,
+    version: row.installerVersion,
+  };
 }
 
 /** Step 1: a presigned PUT for the browser. The file goes straight to S3. */
@@ -35,7 +47,7 @@ export async function requestInstallerUpload(fileName: string) {
 }
 
 /** Step 2: verify the uploaded object, make it the current installer, and remove the old one. */
-export async function confirmInstallerUpload(userId: string, key: string, fileName: string) {
+export async function confirmInstallerUpload(userId: string, key: string, fileName: string, sha256: string) {
   if (!isPanelKey(key) || !key.startsWith(`${INSTALLER_PREFIX}/`)) throw new Error("That upload doesn't belong to the installer.");
   const head = await headObject(key);
   if (!head) throw new Error("The upload didn't reach storage. Please try again.");
@@ -44,19 +56,31 @@ export async function confirmInstallerUpload(userId: string, key: string, fileNa
     throw new Error("The installer must be under 500 MB.");
   }
 
+  const version = versionFromInstallerName(fileName);
+  if (!version) {
+    await deleteObjectQuietly(key);
+    throw new Error("Keep the file name Priinteve-Companion-Setup-x.y.z.exe (it carries the version).");
+  }
+  if (!SHA256_HEX.test(sha256)) {
+    await deleteObjectQuietly(key);
+    throw new Error("Couldn't verify the file checksum. Please upload again.");
+  }
+
   const previous = await prisma.companionTeamPolicy.findUnique({ where: { id: "default" }, select: { installerKey: true } });
   const data = {
     installerKey: key,
     installerFileName: safeFileName(fileName, "Priinteve-Companion-Setup.exe"),
     installerSize: head.size,
     installerUploadedAt: new Date(),
+    installerVersion: version,
+    installerSha256: sha256,
   };
   await prisma.companionTeamPolicy.upsert({ where: { id: "default" }, create: { id: "default", ...data }, update: data });
   if (previous?.installerKey && previous.installerKey !== key) await deleteObjectQuietly(previous.installerKey);
 
   await logActivity({
     type: "companion.installer_uploaded",
-    message: `Companion installer ${data.installerFileName} uploaded`,
+    message: `Companion installer ${data.installerFileName} (v${version}) uploaded`,
     entityType: "companion",
     entityId: "installer",
     userId,
@@ -70,4 +94,45 @@ export async function getInstallerDownloadUrl(): Promise<string | null> {
   });
   if (!row?.installerKey || !row.installerFileName) return null;
   return createDownloadUrl(row.installerKey, row.installerFileName, { contentType: "application/vnd.microsoft.portable-executable" });
+}
+
+export interface UpdateOffer {
+  updateAvailable: boolean;
+  version?: string;
+  sha256?: string;
+  size?: number;
+  url?: string;
+}
+
+/**
+ * What the desktop app is told when it asks for updates. Only a strictly newer installer is
+ * offered, with a 10-minute signed download link; the app verifies the SHA-256 before running it.
+ */
+export async function getUpdateOffer(currentVersion: string): Promise<UpdateOffer> {
+  const row = await prisma.companionTeamPolicy.findUnique({
+    where: { id: "default" },
+    select: {
+      installerKey: true,
+      installerFileName: true,
+      installerSize: true,
+      installerVersion: true,
+      installerSha256: true,
+    },
+  });
+  if (!row?.installerKey || !row.installerFileName || !row.installerVersion || !row.installerSha256) {
+    return { updateAvailable: false };
+  }
+  if (!isNewerVersion(row.installerVersion, currentVersion)) return { updateAvailable: false };
+
+  const url = await createDownloadUrl(row.installerKey, row.installerFileName, {
+    contentType: "application/octet-stream",
+    expiresInSeconds: 600,
+  });
+  return {
+    updateAvailable: true,
+    version: row.installerVersion,
+    sha256: row.installerSha256,
+    size: row.installerSize ?? undefined,
+    url,
+  };
 }

@@ -17,11 +17,20 @@
           <h1 id="greeting">Good morning!</h1>
           <p id="summary" class="summary">Getting your briefing…</p>
           <p id="offline" class="offline" hidden></p>
+          <div id="update" class="update" hidden>
+            <p id="update-text" class="update-text"></p>
+            <div id="update-bar" class="update-bar" hidden><div id="update-fill" class="update-fill"></div></div>
+            <div id="update-actions" class="update-actions">
+              <button id="btn-install" class="btn primary small" type="button">Install now</button>
+              <button id="btn-later" class="btn small" type="button">Later</button>
+            </div>
+          </div>
         </header>
         <div id="sections" class="sections"></div>
         <footer class="actions">
           <button id="btn-ok" class="btn primary" type="button">Got it</button>
           <button id="btn-remind" class="btn" type="button">Remind me in 30 min</button>
+          <button id="btn-stop" class="btn" type="button" hidden>Stop for today</button>
           <button id="btn-refresh" class="btn icon" type="button" title="Refresh" aria-label="Refresh">⟳</button>
         </footer>
         <p id="meta" class="meta"></p>

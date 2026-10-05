@@ -8,6 +8,8 @@
   const status = document.getElementById("status") as HTMLElement;
   const testBtn = document.getElementById("test") as HTMLButtonElement;
   const openPanel = document.getElementById("open-panel") as HTMLButtonElement;
+  const heading = document.getElementById("heading") as HTMLElement;
+  const intro = document.getElementById("intro") as HTMLElement;
 
   function show(result: SettingsResult) {
     status.textContent = result.message;
@@ -26,6 +28,11 @@
   void bridge.getSettings().then((settings) => {
     if (!settings) return;
     server.value = settings.serverUrl;
+    if (!settings.hasToken) {
+      heading.textContent = "Welcome to Priinteve Companion";
+      intro.textContent =
+        "Let's connect this computer. In the panel, open Planner > Companion, create a device token, and paste it below.";
+    }
     if (settings.hasToken) {
       token.placeholder = "Saved (leave blank to keep it)";
       tokenHint.textContent = "A token is saved. Paste a new one only to re-pair this computer.";

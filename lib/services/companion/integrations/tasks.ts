@@ -17,6 +17,8 @@ function taskItem(task: Task, ctx: BriefingContext, prefix: string, status: Brie
     detail: details.filter(Boolean).join(" · "),
     status,
     url: `${ctx.appUrl}/tasks/${task.id}`,
+    taskId: task.id,
+    actions: task.project ? ["complete", "start-timer"] : ["complete"],
   };
 }
 

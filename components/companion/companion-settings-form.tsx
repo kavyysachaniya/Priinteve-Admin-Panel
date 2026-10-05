@@ -8,11 +8,14 @@ import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Field, FormSection } from "@/components/shared/field";
 import { LinesInput } from "@/components/companion/lines-input";
 import { companionSettingsFormSchema, type CompanionSettingsFormValues } from "@/lib/validations/companion";
 import { updateCompanionSettingsAction } from "@/lib/actions/companion";
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 type Allowed = { websites: boolean; slack: boolean; gmail: boolean };
 
@@ -49,6 +52,7 @@ export function CompanionSettingsForm({
   const {
     register,
     control,
+    watch,
     handleSubmit,
     setError,
     formState: { errors },
@@ -57,6 +61,7 @@ export function CompanionSettingsForm({
     defaultValues,
   });
 
+  const reminderEnabled = watch("reminderEnabled");
   const websites = useFieldArray({ control, name: "websites" });
   const slackChannels = useFieldArray({ control, name: "slackChannels" });
 
@@ -141,6 +146,59 @@ export function CompanionSettingsForm({
                   {isAdmin && <SelectItem value="ALL_TASKS">All team tasks</SelectItem>}
                 </SelectContent>
               </Select>
+            )}
+          />
+        </Field>
+      </FormSection>
+
+      <FormSection
+        title="Project reminders"
+        description="While the app is running, it checks in every 30 minutes during your work hours: is a project timer running, and which tasks are overdue or due today, grouped by project."
+      >
+        <div className="flex items-center gap-3 sm:col-span-2">
+          <Controller
+            control={control}
+            name="reminderEnabled"
+            render={({ field }) => (
+              <Switch id="reminderEnabled" checked={field.value} onCheckedChange={field.onChange} />
+            )}
+          />
+          <label htmlFor="reminderEnabled" className="text-sm font-medium">
+            Remind me every 30 minutes
+          </label>
+        </div>
+        <Field label="Work day starts" htmlFor="reminderStart" error={errors.reminderStart?.message}>
+          <Input id="reminderStart" type="time" disabled={!reminderEnabled} {...register("reminderStart")} />
+        </Field>
+        <Field label="Work day ends" htmlFor="reminderEnd" error={errors.reminderEnd?.message} hint="Times use your computer's clock">
+          <Input id="reminderEnd" type="time" disabled={!reminderEnabled} {...register("reminderEnd")} />
+        </Field>
+        <Field label="Days" error={arrayError(errors.reminderDays)} className="sm:col-span-2">
+          <Controller
+            control={control}
+            name="reminderDays"
+            render={({ field }) => (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {WEEKDAYS.map((label, day) => {
+                  const on = field.value.includes(day);
+                  return (
+                    <button
+                      key={label}
+                      type="button"
+                      disabled={!reminderEnabled}
+                      aria-pressed={on}
+                      onClick={() => field.onChange(on ? field.value.filter((d) => d !== day) : [...field.value, day].sort())}
+                      className={`rounded-full border px-3 py-1 text-xs font-medium transition disabled:opacity-50 ${
+                        on
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-muted/50 text-muted-foreground hover:bg-muted"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
             )}
           />
         </Field>

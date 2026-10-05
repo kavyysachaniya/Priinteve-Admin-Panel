@@ -93,6 +93,26 @@ export function markAutostartInitialized(): void {
 
 interface StateFile {
   lastShownDate: string;
+  /** Local date the person pressed "Stop for today" on the project reminder. */
+  stopRemindersDate: string;
+  /** Tray checkbox: reminders paused until switched back on. */
+  remindersPaused: boolean;
+  /** Epoch ms before which the update prompt isn't shown again ("Later"). */
+  updateSnoozeUntil: number;
+  /** Mascot size chosen from the tray menu. */
+  mascotSize: "small" | "medium" | "large";
+  /** Where the person dragged the (open) window to. */
+  windowPos: { x: number; y: number };
+}
+
+export type MascotSize = StateFile["mascotSize"];
+
+function readState(): Partial<StateFile> {
+  return readJson<StateFile>("state.json");
+}
+
+function patchState(patch: Partial<StateFile>): void {
+  writeJson("state.json", { ...readState(), ...patch });
 }
 
 export function localDateKey(date = new Date()): string {
@@ -103,11 +123,53 @@ export function localDateKey(date = new Date()): string {
 }
 
 export function wasShownToday(): boolean {
-  return readJson<StateFile>("state.json").lastShownDate === localDateKey();
+  return readState().lastShownDate === localDateKey();
 }
 
 export function markShownToday(): void {
-  writeJson("state.json", { lastShownDate: localDateKey() });
+  patchState({ lastShownDate: localDateKey() });
+}
+
+export function areRemindersStoppedToday(): boolean {
+  return readState().stopRemindersDate === localDateKey();
+}
+
+export function stopRemindersToday(): void {
+  patchState({ stopRemindersDate: localDateKey() });
+}
+
+export function areRemindersPaused(): boolean {
+  return readState().remindersPaused === true;
+}
+
+export function setRemindersPaused(paused: boolean): void {
+  patchState({ remindersPaused: paused });
+}
+
+export function getMascotSize(): MascotSize {
+  const size = readState().mascotSize;
+  return size === "small" || size === "large" ? size : "medium";
+}
+
+export function setMascotSize(size: MascotSize): void {
+  patchState({ mascotSize: size });
+}
+
+export function getWindowPos(): { x: number; y: number } | null {
+  const pos = readState().windowPos;
+  return pos && Number.isFinite(pos.x) && Number.isFinite(pos.y) ? { x: pos.x, y: pos.y } : null;
+}
+
+export function setWindowPos(pos: { x: number; y: number }): void {
+  patchState({ windowPos: { x: Math.round(pos.x), y: Math.round(pos.y) } });
+}
+
+export function getUpdateSnoozeUntil(): number {
+  return readState().updateSnoozeUntil ?? 0;
+}
+
+export function snoozeUpdatePrompt(untilEpochMs: number): void {
+  patchState({ updateSnoozeUntil: untilEpochMs });
 }
 
 export function readCachedBriefing(): Briefing | null {

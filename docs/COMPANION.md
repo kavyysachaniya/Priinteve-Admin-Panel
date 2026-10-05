@@ -71,6 +71,26 @@ These are the same steps as the Setup guide on the Companion page:
 
 The mascot looks happy when all is well and worried when something is red. With Windows **Animation effects** off, it fades in instead of sliding, waving and bobbing.
 
+## Desktop app behaviour
+
+- **First run.** A fresh install isn't paired, so it opens its settings window straight away, with the panel address filled in. Paste the device token, and the first real briefing appears as soon as you save. Until it's paired, the tray's "Show briefing now" opens settings too.
+- **Minimise to the edge.** Click the mascot (or press Esc, or **Got it**) and it slides to the right screen edge, half visible. Click it there, or the tray icon, to open it again.
+  - Right-click the mascot, the bubble or the tray icon for the menu: Show briefing now, Open settings, Start with Windows, Project reminders, Quit.
+  - Clicks pass through the transparent window except over the mascot and the bubble. The app tracks the cursor against their rectangles, so it works however the mouse moves.
+- **Act on tasks from the bubble.** Task rows in the briefing and the reminder have small buttons: **✓** marks the task done, **▶** starts its timer (your timer on any other task stops), and the timer row has **■** to stop the running timer. They call `POST /api/companion/task` with the device token, and the server re-checks that you can see the task and reuses the panel's own rules (clients can't track time; one running timer per person).
+- **Move and resize the mascot.**
+  - Press and drag the mascot to move it. Open, it moves within the screen (the position is remembered). Minimised, it slides along the right screen edge.
+  - Tray or right-click menu → **Mascot size** → Small, Medium or Large (remembered).
+- **Project reminders.** Every 30 minutes (at :00 and :30) during your work hours, the app asks the panel for a check-in and shows it:
+  - whether a project timer is running;
+  - your overdue and due-today tasks, grouped by project.
+
+  The schedule is set per person on the Companion page (default 10:00-19:00, Monday to Saturday, on your computer's clock). It stays quiet when a timer is running and nothing is due, never covers a briefing you have open, and skips ticks when the network is down. **Stop for today** pauses it until tomorrow; the tray's **Project reminders** switch pauses it until turned back on.
+- **Auto-update.** The app checks 60 seconds after start and every 6 hours (installed copies only). When a newer installer is available it shows "Update x.y.z is available: Install now / Later".
+  - **Install now:** it asks the panel for a fresh 10-minute download link, downloads the installer, **verifies its size and SHA-256**, then runs it silently and restarts. A file that fails the check is deleted and never run.
+  - **Later:** asks again in 6 hours.
+  - **For admins:** keep the installer's file name `Priinteve-Companion-Setup-x.y.z.exe`. The version comes from the name, and the checksum is computed in the browser at upload. Only a strictly newer version is ever offered, so bump `version` in `companion/package.json` before each build.
+
 ## What the briefing checks
 
 | Section | Source | Result |
@@ -217,7 +237,7 @@ npm run dist      # → companion/release/Priinteve-Companion-Setup-<version>.ex
 
 - **Installer behaviour:** it installs to `%LOCALAPPDATA%\Programs\`. The first run turns on **Start with Windows**.
 - **App data:** `config.json`, `state.json`, `briefing-cache.json` and `companion.log` live in `%APPDATA%\Priinteve Companion\`.
-- **Updates:** for a new version, bump `version` in `companion/package.json`, rebuild and upload. Installing over the old version keeps settings.
+- **Updates:** bump `version` in `companion/package.json`, rebuild and upload the new `.exe`. Computers that already have the app offer the update themselves (see [Desktop app behaviour](#desktop-app-behaviour)); installing over the old version keeps settings.
 - **Signing:** set `CSC_LINK` / `CSC_KEY_PASSWORD` to code-sign.
 
 **Startup:**
@@ -263,15 +283,15 @@ npm run dist      # → companion/release/Priinteve-Companion-Setup-<version>.ex
 | Page | `app/(app)/companion/` |
 | UI | `components/companion/*`: `setup-guide.tsx` is the in-page guide |
 | Actions / validation | `lib/actions/companion.ts`, `lib/validations/companion.ts` |
-| Services | `lib/services/companion/`: `settings.ts`, `devices.ts`, `accounts.ts`, `installer.ts`, `briefing.ts`, `net.ts`, `time.ts`, `email-scoring.ts`, `google.ts`, `oauth-state.ts` |
+| Services | `lib/services/companion/`: `settings.ts`, `devices.ts`, `accounts.ts`, `installer.ts`, `reminder.ts`, `task-actions.ts`, `versions.ts`, `briefing.ts`, `net.ts`, `time.ts`, `email-scoring.ts`, `google.ts`, `oauth-state.ts` |
 | Integrations | `lib/services/companion/integrations/`: `websites.ts`, `slack.ts`, `gmail.ts`, `tasks.ts` |
-| API | `app/api/companion/briefing`, `app/api/companion/installer`, `app/api/companion/google/{connect,callback}` |
+| API | `app/api/companion/briefing`, `app/api/companion/reminder`, `app/api/companion/update`, `app/api/companion/task`, `app/api/companion/installer`, `app/api/companion/google/{connect,callback}` |
 | Shared | `lib/crypto.ts`, `lib/services/storage.ts`, `listOpenTasksDueBefore()` in `lib/services/tasks.ts` |
 | Desktop app | `companion/` (see `companion/README.md`) |
 
 ## Testing
 
-- **Offline checks:** `npx tsx scripts/test-companion.ts` needs no database or network. It covers:
+- **Offline checks:** `npx tsx scripts/test-companion.ts` needs no database or network. It covers (among the others below) version comparison, installer file names, task due instants, work-hour checks, reminder tick timing and update-payload validation. Full list:
   - email scoring;
   - time-zone days;
   - private-address blocking;

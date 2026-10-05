@@ -7,11 +7,17 @@ import type { CompanionSettingsFormValues } from "@/lib/validations/companion";
 export type ItemStatus = "ok" | "warn" | "error" | "todo";
 export type Mood = "happy" | "neutral" | "worried";
 
+export type ItemAction = "complete" | "start-timer" | "stop-timer";
+
 export interface BriefingItem {
   label: string;
   detail?: string;
   status: ItemStatus;
   url?: string;
+  /** Set on task rows: lets the desktop app act on the task. */
+  taskId?: string;
+  /** Buttons the desktop app may show on this row. */
+  actions?: ItemAction[];
 }
 
 export interface BriefingSection {
@@ -60,4 +66,17 @@ export function truncate(text: string, max: number): string {
 
 export function plural(count: number, one: string, many = `${one}s`): string {
   return `${count} ${count === 1 ? one : many}`;
+}
+
+/** What GET /api/companion/reminder returns: the schedule plus a small project check-in. */
+export interface ReminderPayload {
+  enabled: boolean;
+  /** HH:MM on the person's own PC clock. */
+  start: string;
+  end: string;
+  /** 0 = Sunday .. 6 = Saturday. */
+  days: number[];
+  /** True when there is nothing worth interrupting for (timer running and nothing due). */
+  quiet: boolean;
+  briefing: Briefing | null;
 }

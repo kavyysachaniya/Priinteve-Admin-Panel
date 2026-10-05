@@ -138,7 +138,12 @@ export default async function CompanionPage({ searchParams }: PageProps<"/compan
           storageConfigured={storageConfigured}
           current={
             installer
-              ? { fileName: installer.fileName, size: installer.size, uploadedAt: installer.uploadedAt?.toISOString() ?? null }
+              ? {
+                  fileName: installer.fileName,
+                  size: installer.size,
+                  version: installer.version,
+                  uploadedAt: installer.uploadedAt?.toISOString() ?? null,
+                }
               : null
           }
         />

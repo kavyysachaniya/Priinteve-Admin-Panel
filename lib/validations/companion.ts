@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { versionFromInstallerName } from "@/lib/services/companion/versions";
 
 // Settings for the desktop Morning Companion. Every list is capped so one person's
 // briefing can't fan out into hundreds of outbound requests.
@@ -48,7 +49,11 @@ function isValidTimezone(value: string) {
   }
 }
 
-export const companionSettingsFormSchema = z.object({
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+export const DEFAULT_REMINDER_DAYS = [1, 2, 3, 4, 5, 6]; // Monday to Saturday
+
+export const companionSettingsBaseSchema = z.object({
   mascotName: z.string().trim().min(1, "Give the mascot a name").max(30),
   ownerName: z.string().trim().min(1, "Enter the name the mascot should greet").max(60),
   greeting: z.string().trim().min(1, "Enter a greeting").max(80),
@@ -60,7 +65,16 @@ export const companionSettingsFormSchema = z.object({
   vipSenders: z.array(vipSender).max(50, "Up to 50 VIP senders"),
   urgentKeywords: z.array(keyword).max(30, "Up to 30 keywords"),
   plannerSource: z.enum(["MY_TASKS", "ALL_TASKS"]),
+  reminderEnabled: z.boolean(),
+  reminderStart: z.string().regex(HHMM, "Use HH:MM, e.g. 10:00"),
+  reminderEnd: z.string().regex(HHMM, "Use HH:MM, e.g. 19:00"),
+  reminderDays: z.array(z.number().int().min(0).max(6)).max(7, "Pick up to 7 days"),
 });
+
+export const companionSettingsFormSchema = companionSettingsBaseSchema.refine(
+  (v) => !v.reminderEnabled || v.reminderStart < v.reminderEnd,
+  { message: "The end time must be after the start time", path: ["reminderEnd"] },
+);
 
 export type CompanionSettingsFormValues = z.infer<typeof companionSettingsFormSchema>;
 
@@ -80,6 +94,10 @@ export function companionSettingsDefaults(ownerName = ""): CompanionSettingsForm
     vipSenders: [],
     urgentKeywords: DEFAULT_URGENT_KEYWORDS,
     plannerSource: "MY_TASKS",
+    reminderEnabled: true,
+    reminderStart: "10:00",
+    reminderEnd: "19:00",
+    reminderDays: DEFAULT_REMINDER_DAYS,
   };
 }
 
@@ -97,8 +115,13 @@ export const companionInstallerUploadSchema = z.object({
     .trim()
     .min(1)
     .max(150)
-    .refine((name) => name.toLowerCase().endsWith(".exe"), "Upload the Windows installer (.exe)"),
+    .refine((name) => name.toLowerCase().endsWith(".exe"), "Upload the Windows installer (.exe)")
+    .refine(
+      (name) => versionFromInstallerName(name) !== null,
+      "Keep the file name Priinteve-Companion-Setup-x.y.z.exe (it carries the version)",
+    ),
   size: z.number().int().positive().max(INSTALLER_MAX_BYTES, "The installer must be under 500 MB"),
+  sha256: z.string().trim().toLowerCase().regex(/^[a-f0-9]{64}$/, "Couldn't read the file checksum"),
 });
 
 export type CompanionTeamPolicyValues = z.infer<typeof companionTeamPolicySchema>;

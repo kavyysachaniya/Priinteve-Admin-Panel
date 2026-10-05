@@ -70,6 +70,7 @@ Related: [BUSINESS-LOGIC.md](./BUSINESS-LOGIC.md) · [DEVELOPMENT.md](./DEVELOPM
 | Model | Purpose | Notes |
 |---|---|---|
 | `Task` | Tasks, optionally linked to a customer, order, quotation, invoice, production job or project | `dueDate` + `dueTime` (string); `position` (Float) orders cards within a board column |
+| `TaskComment` | Discussion on a task | `taskId` (cascade), `authorId` (cascade), `body`, `editedAt`; index `(taskId, createdAt)` |
 | `CalendarEvent` | Manual calendar events | Optional links to a customer, order or task |
 | `Note` | Notes | Optional links to a customer, order or task; `pinned` |
 | `Project` | Client projects | See [PROJECTS.md](./PROJECTS.md) |
@@ -81,8 +82,8 @@ All companion rows belong to one user and are deleted with the user (`onDelete: 
 
 | Model | Purpose | Notes |
 |---|---|---|
-| `CompanionSettings` | One person's briefing settings | `userId` unique. List settings are `Json` columns re-validated with Zod on every read. `plannerSource` `MY_TASKS`/`ALL_TASKS`. |
-| `CompanionTeamPolicy` | Which sections employees may use, and the current installer in S3 (`installerKey`, `installerFileName`, `installerSize`, `installerUploadedAt`) | Single row, id `"default"`; absent means the defaults |
+| `CompanionSettings` | One person's briefing settings | `userId` unique. Reminder fields: `reminderEnabled`, `reminderStart`/`reminderEnd` (`HH:MM`), `reminderDays` (0 = Sunday). List settings are `Json` columns re-validated with Zod on every read. `plannerSource` `MY_TASKS`/`ALL_TASKS`. |
+| `CompanionTeamPolicy` | Which sections employees may use, and the current installer in S3 (`installerKey`, `installerFileName`, `installerSize`, `installerUploadedAt`, `installerVersion`, `installerSha256`) | Single row, id `"default"`; absent means the defaults |
 | `CompanionDevice` | Paired desktop computers | `tokenHash` (SHA-256 of the bearer token), `revokedAt`, `lastSeenAt` (updated at most every 5 minutes) |
 | `CompanionGmailAccount` | Connected Gmail accounts | `encRefreshToken` (AES-256-GCM); unique `(userId, email)`; `excludeFromProcessing` = counts only; `status` `CONNECTED`/`NEEDS_RECONNECT` |
 

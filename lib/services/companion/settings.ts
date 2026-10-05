@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { UserRole } from "@prisma/client";
 import {
   companionSettingsDefaults,
-  companionSettingsFormSchema,
+  companionSettingsBaseSchema,
   companionTeamPolicySchema,
   type CompanionSettingsFormValues,
   type CompanionTeamPolicyValues,
@@ -17,7 +17,7 @@ export async function getCompanionSettings(userId: string, fallbackName = ""): P
   const row = await prisma.companionSettings.findUnique({ where: { userId } });
   if (!row) return defaults;
 
-  const shape = companionSettingsFormSchema.shape;
+  const shape = companionSettingsBaseSchema.shape;
   const pick = <K extends keyof CompanionSettingsFormValues>(key: K, value: unknown): CompanionSettingsFormValues[K] => {
     const parsed = shape[key].safeParse(value);
     return parsed.success ? (parsed.data as CompanionSettingsFormValues[K]) : defaults[key];
@@ -35,6 +35,10 @@ export async function getCompanionSettings(userId: string, fallbackName = ""): P
     vipSenders: pick("vipSenders", row.vipSenders),
     urgentKeywords: pick("urgentKeywords", row.urgentKeywords),
     plannerSource: row.plannerSource,
+    reminderEnabled: row.reminderEnabled,
+    reminderStart: pick("reminderStart", row.reminderStart),
+    reminderEnd: pick("reminderEnd", row.reminderEnd),
+    reminderDays: pick("reminderDays", row.reminderDays),
   };
 }
 

@@ -4,11 +4,15 @@
 type ItemStatus = "ok" | "warn" | "error" | "todo";
 type Mood = "happy" | "neutral" | "worried";
 
+type ItemAction = "complete" | "start-timer" | "stop-timer";
+
 interface BriefingItem {
   label: string;
   detail?: string;
   status: ItemStatus;
   url?: string;
+  taskId?: string;
+  actions?: ItemAction[];
 }
 
 interface BriefingSection {
@@ -34,7 +38,14 @@ type BriefingState =
   | { kind: "enter" }
   | { kind: "leave" }
   | { kind: "loading"; attempt: number; total: number }
-  | { kind: "briefing"; briefing: Briefing; source: "live" | "cache" | "fallback" | "sample" };
+  | { kind: "briefing"; briefing: Briefing; source: "live" | "cache" | "fallback" | "sample"; mode?: "briefing" | "reminder" | "update" };
+
+interface UpdateViewState {
+  phase: "available" | "downloading" | "installing" | "error";
+  version: string;
+  percent?: number;
+  message?: string;
+}
 
 interface SettingsResult {
   ok: boolean;
@@ -49,7 +60,18 @@ interface CompanionBridge {
   refresh(): void;
   openUrl(url: string): void;
   showMenu(): void;
+  dockChanged(docked: boolean): void;
+  dragStart(): void;
+  dragMove(dx: number, dy: number): void;
+  dragEnd(): void;
+  onUi(callback: (state: { size: "small" | "medium" | "large" }) => void): () => void;
+  stopToday(): void;
+  onUpdate(callback: (state: UpdateViewState | null) => void): () => void;
+  installUpdate(): void;
+  laterUpdate(): void;
   setInteractive(interactive: boolean): void;
+  taskAction(action: ItemAction, taskId: string): Promise<SettingsResult>;
+  reportHits(rects: Array<{ x: number; y: number; w: number; h: number }>): void;
   getSettings(): Promise<{ serverUrl: string; hasToken: boolean } | null>;
   saveSettings(input: { serverUrl: string; token: string }): Promise<SettingsResult>;
   testConnection(input: { serverUrl: string; token: string }): Promise<SettingsResult>;

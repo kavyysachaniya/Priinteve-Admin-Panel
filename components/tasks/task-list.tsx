@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { format } from "date-fns";
-import { CheckSquare, Eye, Pencil } from "lucide-react";
+import { CheckSquare, Eye } from "lucide-react";
 import { TaskStatusBadge, TaskPriorityBadge } from "@/components/shared/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -100,8 +100,7 @@ export function TaskList({ tasks }: { tasks: TaskListItem[] }) {
               </TableCell>
               <TableCell>
                 <RowActionsBar>
-                  <QuickAction icon={<Eye className="size-3.5" />} label="View" href={`/tasks/${task.id}`} />
-                  <QuickAction icon={<Pencil className="size-3.5" />} label="Edit" href={`/tasks/${task.id}/edit`} />
+                  <QuickAction icon={<Eye className="size-3.5" />} label="Open" href={`/tasks/${task.id}`} />
                   <DeleteTaskItem taskId={task.id} taskTitle={task.title} />
                 </RowActionsBar>
               </TableCell>

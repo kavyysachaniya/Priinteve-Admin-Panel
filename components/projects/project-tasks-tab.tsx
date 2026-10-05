@@ -26,9 +26,18 @@ export function ProjectTasksTab({
             {tasks.length} task{tasks.length === 1 ? "" : "s"} tracked for this project. Drag cards between columns to update status.
           </p>
         </div>
-        <TaskCreateDialog projects={[{ id: projectId, name: projectName }]} fixedProjectId={projectId} />
+        <TaskCreateDialog
+          projects={[{ id: projectId, name: projectName }]}
+          fixedProjectId={projectId}
+          canStartTimer={currentUserRole !== "CLIENT"}
+        />
       </div>
-      <TaskBoard tasks={tasks} viewer={{ id: currentUserId, role: currentUserRole }} />
+      <TaskBoard
+        tasks={tasks}
+        viewer={{ id: currentUserId, role: currentUserRole }}
+        projects={[{ id: projectId, name: projectName }]}
+        fixedProjectId={projectId}
+      />
     </div>
   );
 }

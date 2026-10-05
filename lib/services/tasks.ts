@@ -226,7 +226,15 @@ export async function listOpenTasksDueBefore(before: Date, user: SessionUser, sc
     where,
     orderBy: [{ dueDate: "asc" }, { priority: "desc" }],
     take: 50,
-    select: { id: true, title: true, dueDate: true, dueTime: true, priority: true, status: true },
+    select: {
+      id: true,
+      title: true,
+      dueDate: true,
+      dueTime: true,
+      priority: true,
+      status: true,
+      project: { select: { id: true, name: true } },
+    },
   });
 }
 
@@ -719,4 +727,32 @@ export async function deleteTask(id: string, user?: SessionUser) {
   }, TX_OPTIONS);
   await Promise.all(files.map((f) => deleteObjectQuietly(f.storageKey)));
   return deleted;
+}
+
+/**
+ * Timer state for the task page: who is running a timer on this task, and whether the viewer
+ * has a timer running elsewhere (it stops automatically if they start this one).
+ */
+export async function getTaskTimerContext(taskId: string, viewerId: string) {
+  const [running, mine] = await Promise.all([
+    prisma.projectTimeEntry.findFirst({
+      where: { taskId, status: "RUNNING" },
+      select: { userId: true, startedAt: true, user: { select: { name: true } } },
+      orderBy: { startedAt: "desc" },
+    }),
+    prisma.projectTimeEntry.findFirst({
+      where: { userId: viewerId, status: "RUNNING" },
+      select: { taskId: true, project: { select: { name: true } }, task: { select: { title: true } } },
+      orderBy: { startedAt: "desc" },
+    }),
+  ]);
+  return {
+    running: running?.userId
+      ? { userId: running.userId, userName: running.user?.name ?? "Someone", startedAt: running.startedAt.toISOString() }
+      : null,
+    elsewhere:
+      mine && mine.taskId !== taskId
+        ? { projectName: mine.project?.name ?? "another project", taskTitle: mine.task?.title ?? null }
+        : null,
+  };
 }

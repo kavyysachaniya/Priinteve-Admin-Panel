@@ -197,6 +197,7 @@ model User {
   taggedMentions               TaskMention[]          @relation("UserTaggedMentions")
   createdTasks                 Task[]                 @relation("CreatedTasks")
   notifications                Notification[]         @relation("UserNotifications")
+  taskComments                 TaskComment[]
   companionSettings            CompanionSettings?
   companionDevices             CompanionDevice[]
   companionGmailAccounts       CompanionGmailAccount[]
@@ -583,6 +584,7 @@ model Task {
   createdBy       User?          @relation("CreatedTasks", fields: [createdById], references: [id])
   createdByRole   UserRole?
   mentions        TaskMention[]
+  comments        TaskComment[]
   timeEntries     ProjectTimeEntry[]
 
   events CalendarEvent[]
@@ -1112,6 +1114,13 @@ model CompanionSettings {
   /// ALL_TASKS is honoured for admins only; everyone else always gets their own tasks.
   plannerSource CompanionPlannerSource @default(MY_TASKS)
 
+  // Repeating 30-minute project reminder (desktop app). Times are HH:MM on the person's own PC clock.
+  reminderEnabled Boolean @default(true)
+  reminderStart   String  @default("10:00")
+  reminderEnd     String  @default("19:00")
+  /// Days the reminder runs, 0 = Sunday .. 6 = Saturday.
+  reminderDays    Json    @default("[1,2,3,4,5,6]")
+
   updatedAt DateTime @updatedAt
 }
 
@@ -1126,6 +1135,9 @@ model CompanionTeamPolicy {
   installerFileName   String?
   installerSize       Int?
   installerUploadedAt DateTime?
+  /// Version parsed from the file name (x.y.z) and the file's SHA-256, used by the app's auto-update.
+  installerVersion    String?
+  installerSha256     String?
   updatedAt           DateTime  @updatedAt
 }
 
@@ -1160,3 +1172,16 @@ model CompanionGmailAccount {
   @@unique([userId, email])
 }
 
+/// Discussion thread on a task. Visible to anyone who can see the task.
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body      String
+  editedAt  DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([taskId, createdAt])
+}

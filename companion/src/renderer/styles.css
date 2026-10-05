@@ -59,9 +59,9 @@ body {
 .bubble {
   position: absolute;
   right: 22px;
-  bottom: 158px;
+  bottom: calc(var(--m-h) + 10px);
   width: 360px;
-  max-height: 420px;
+  max-height: min(420px, calc(100vh - var(--m-h) - 30px));
   display: flex;
   flex-direction: column;
   background: var(--bubble-bg);
@@ -102,6 +102,54 @@ body {
   border-radius: 8px;
   background: color-mix(in srgb, var(--warn) 14%, transparent);
   color: var(--warn);
+  font-size: 12px;
+}
+
+.update {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.update-text {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.update-text.error {
+  color: var(--error);
+}
+
+.update-bar {
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 20%, transparent);
+  overflow: hidden;
+}
+
+.update-fill {
+  height: 100%;
+  width: 0;
+  background: var(--primary);
+  transition: width 0.2s linear;
+}
+
+.update-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.update-actions[hidden],
+.update-bar[hidden] {
+  display: none;
+}
+
+.btn.small {
+  padding: 4px 10px;
   font-size: 12px;
 }
 
@@ -148,6 +196,69 @@ button.item:hover,
 button.item:focus-visible {
   background: var(--row-hover);
   outline: none;
+}
+
+.item-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.item-row > .item {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-row > .item.done .item-label {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.item-actions {
+  display: flex;
+  gap: 2px;
+  padding-top: 3px;
+}
+
+.item-action {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--btn-bg);
+  color: var(--bubble-fg);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.item-action:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 22%, var(--btn-bg));
+}
+
+.item-action:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.item-action.on {
+  background: color-mix(in srgb, var(--ok) 25%, transparent);
+  color: var(--ok);
+}
+
+.item-action:disabled {
+  cursor: default;
+}
+
+.item-note {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--ok);
+}
+
+.item-note.error {
+  color: var(--error);
 }
 
 .item-text {
@@ -250,12 +361,35 @@ button.item:focus-visible {
 
 /* ------------------------------------------------------------------ mascot */
 
+/* Mascot size variants. Everything that depends on the mascot's size reads these variables. */
+.stage {
+  --m-w: 128px;
+  --m-h: 148px;
+  /* How far the docked mascot is pushed past the screen edge (a little under half of it stays visible). */
+  --dock-offset: calc(var(--m-w) * 0.55);
+}
+
+.stage[data-size="small"] {
+  --m-w: 92px;
+  --m-h: 106px;
+}
+
+.stage[data-size="large"] {
+  --m-w: 168px;
+  --m-h: 194px;
+}
+
+.mascot.dragging {
+  cursor: grabbing;
+}
+
 .mascot {
+  cursor: pointer;
   position: absolute;
   right: 22px;
   bottom: 6px;
-  width: 128px;
-  height: 148px;
+  width: var(--m-w);
+  height: var(--m-h);
   transform: translateX(160%);
 }
 
@@ -331,11 +465,28 @@ button.item:focus-visible {
 
 @keyframes slide-in {
   from {
-    transform: translateX(160%);
+    transform: translateX(var(--slide-from, 160%));
   }
   to {
     transform: translateX(0);
   }
+}
+
+/* Minimised: bubble hidden, mascot peeking in from the right edge. Hover to nudge it out. */
+.stage.docked .mascot {
+  transform: translateX(var(--dock-offset));
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.stage.docked .mascot:hover {
+  transform: translateX(calc(var(--dock-offset) - 28px));
+}
+
+.stage.docked .bubble {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.95);
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
 @keyframes slide-out {
@@ -435,6 +586,13 @@ button.item:focus-visible {
   .stage.entered .mascot,
   .stage.entered .bubble {
     animation: fade-in 0.2s linear forwards;
+  }
+  .stage.docked .mascot,
+  .stage.docked .bubble {
+    transition: none;
+  }
+  .stage.docked .mascot {
+    opacity: 1;
   }
   .stage.leaving .mascot,
   .stage.leaving .bubble {

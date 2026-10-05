@@ -81,7 +81,7 @@ export default async function TasksPage({
               </Button>
             </div>
             {isBoard ? (
-              <TaskCreateDialog projects={projects} />
+              <TaskCreateDialog projects={projects} canStartTimer={!isClient} />
             ) : (
               <Button asChild size="sm">
                 <Link href="/tasks/new">
@@ -161,7 +161,7 @@ export default async function TasksPage({
       </div>
 
       {isBoard ? (
-        <TaskBoard tasks={boardTasks} viewer={{ id: sessionUser.id, role: sessionUser.role }} />
+        <TaskBoard tasks={boardTasks} viewer={{ id: sessionUser.id, role: sessionUser.role }} projects={projects} />
       ) : (
         listData && (
           <>
