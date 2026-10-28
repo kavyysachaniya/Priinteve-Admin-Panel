@@ -68,7 +68,7 @@ export default async function CompanionPage({ searchParams }: PageProps<"/compan
     <div className="mx-auto max-w-3xl space-y-5">
       <PageHeader
         title="Companion"
-        description="Your morning briefing on the desktop: sites, Slack, email and today's tasks. Changes apply on the next briefing."
+        description="The Windows time tracker and your morning briefing: task timers that work offline, plus sites, Slack, email and today's tasks."
         className="mb-0"
         actions={
           installer ? (

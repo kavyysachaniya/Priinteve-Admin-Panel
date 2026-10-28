@@ -3,7 +3,19 @@
 //
 //   npx tsx scripts/test-timesheet.ts
 
-import { dayKeyInZone, formatHoursMinutes, groupEntries, resolveRange, type TimesheetEntry } from "../lib/timesheet";
+import {
+  dayKeyInZone,
+  decimalHours,
+  formatHms,
+  formatHoursMinutes,
+  groupEntries,
+  monthRange,
+  resolveRange,
+  secondsInRange,
+  splitByDay,
+  type TimesheetEntry,
+} from "../lib/timesheet";
+import { csvCell, toCsv } from "../lib/csv";
 import { parseTimesheetQuery } from "../lib/validations/timesheet";
 
 function assert(cond: unknown, message: string): asserts cond {
@@ -92,4 +104,54 @@ assert(bad.project === "p1", "array params use the first value");
 const good = parseTimesheetQuery({ preset: "custom", from: "2026-03-01", to: "2026-03-31", group: "person", user: "ck123" });
 assert(good.preset === "custom" && good.group === "person" && good.user === "ck123", "valid query is kept");
 
-console.log("Timesheet checks passed (presets, custom range, 366-day cap, DST, grouping, formatting, query parsing).");
+// 6. Midnight and month boundaries ------------------------------------------------------------
+const ist = (local: string) => new Date(`${local}+05:30`);
+const night = { startedAt: ist("2026-10-05T23:00:00"), endedAt: ist("2026-10-06T01:00:00"), seconds: 7200 };
+const nightDays = splitByDay(night, monday, TZ);
+assert(nightDays.length === 2 && nightDays[0].key === "2026-10-05" && nightDays[0].seconds === 3600 && nightDays[1].seconds === 3600, "23:00-01:00 gives an hour to each day");
+const oct5 = resolveRange("custom", { from: "2026-10-05", to: "2026-10-05" }, monday, TZ);
+assert(secondsInRange(night, oct5.from, oct5.to, monday) === 3600, "clipped to the day");
+const odd = { startedAt: ist("2026-10-05T23:59:59"), endedAt: ist("2026-10-07T00:00:02"), seconds: 86403 };
+const oddDays = splitByDay(odd, monday, TZ);
+assert(oddDays.length === 3 && oddDays.reduce((a, d) => a + d.seconds, 0) === 86403, "parts always add up to the segment");
+
+const monthEnd = { startedAt: ist("2026-10-31T22:00:00"), endedAt: ist("2026-11-01T02:00:00"), seconds: 14400 };
+const oct = monthRange("2026-10", monday, TZ);
+const nov = monthRange("2026-11", monday, TZ);
+assert(oct.fromKey === "2026-10-01" && oct.toKey === "2026-10-31" && oct.days === 31, "month range");
+assert(secondsInRange(monthEnd, oct.from, oct.to, monday) === 7200, "October keeps its 2 hours");
+assert(secondsInRange(monthEnd, nov.from, nov.to, monday) === 7200, "November gets the other 2 hours");
+assert(secondsInRange({ ...night, startedAt: ist("2026-09-01T10:00:00"), endedAt: ist("2026-09-01T11:00:00") }, oct.from, oct.to, monday) === 0, "outside the month counts nothing");
+const running = { startedAt: ist("2026-10-31T23:00:00"), endedAt: null, seconds: 7200 };
+assert(secondsInRange(running, oct.from, oct.to, ist("2026-11-01T01:00:00")) === 3600, "a running timer counts up to now, clipped");
+// An entry edited to a shorter worked time keeps its recorded seconds when fully inside.
+assert(secondsInRange({ startedAt: ist("2026-10-10T10:00:00"), endedAt: ist("2026-10-10T12:00:00"), seconds: 3000 }, oct.from, oct.to, monday) === 3000, "recorded seconds win inside the range");
+
+// Paused time: two segments of one session (10:00-10:30, pause, 11:00-11:20) count 50 minutes.
+const pausedSession = [
+  entry({ startedAt: ist("2026-10-05T10:00:00"), endedAt: ist("2026-10-05T10:30:00"), seconds: 1800 }),
+  entry({ startedAt: ist("2026-10-05T11:00:00"), endedAt: ist("2026-10-05T11:20:00"), seconds: 1200 }),
+];
+assert(groupEntries(pausedSession, "task", TZ)[0].seconds === 3000, "the paused half hour isn't counted");
+
+// Day grouping uses the split parts.
+const splitEntry = entry({ ...night, days: nightDays });
+const splitGroups = groupEntries([splitEntry], "day", TZ);
+assert(splitGroups.length === 2 && splitGroups.every((g) => g.seconds === 3600), "day grouping splits at midnight");
+
+// 7. Export formatting -------------------------------------------------------------------------
+assert(formatHms(90061) === "25:01:01" && decimalHours(5400) === 1.5 && decimalHours(1) === 0.0003, "HH:MM:SS and decimal hours");
+assert(csvCell("=HYPERLINK(\"x\")") === `"'=HYPERLINK(""x"")"`, "formula injection is defused and quotes doubled");
+assert(csvCell("+91 98765") === `"'+91 98765"` && csvCell("-5") === `"'-5"` && csvCell("@cmd") === `"'@cmd"`, "+ - @ prefixed");
+assert(csvCell(1.5) === "1.5" && csvCell(null) === "", "numbers stay numeric, null is empty");
+const BOM = String.fromCharCode(0xfeff);
+const NL = String.fromCharCode(10);
+const CRLF = String.fromCharCode(13, 10);
+assert(csvCell(`line1${NL}line2, ok`) === `"line1${NL}line2, ok"`, "newlines and commas stay inside quotes");
+const csv = toCsv(["Project", "Hours"], [["दिवाली ब्रोशर ✨", 2]]);
+assert(csv.startsWith(BOM) && csv.includes(`"दिवाली ब्रोशर ✨",2${CRLF}`), "UTF-8 BOM, Unicode and CRLF");
+const month = parseTimesheetQuery({ month: "2026-02", status: "attention" });
+assert(month.month === "2026-02" && month.status === "attention", "month and status parsed");
+assert(parseTimesheetQuery({ month: "2026-13", status: "x" }).month === undefined, "bad month ignored");
+
+console.log("Timesheet checks passed (presets, custom range, 366-day cap, DST, grouping, formatting, query parsing, midnight/month splits, CSV).");

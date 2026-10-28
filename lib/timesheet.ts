@@ -21,6 +21,10 @@ export const PRESET_LABELS: Record<Preset, string> = {
 };
 
 export const GROUPS = ["task", "project", "person", "day"] as const;
+
+/** Entry filters on the timesheet: "attention" = flagged (>12 h), interrupted or corrected. */
+export const ENTRY_FILTERS = ["all", "running", "completed", "attention"] as const;
+export type EntryFilter = (typeof ENTRY_FILTERS)[number];
 export type GroupBy = (typeof GROUPS)[number];
 
 export interface DateRange {
@@ -94,6 +98,80 @@ export function resolveRange(
   }
 }
 
+/** A calendar month ("YYYY-MM") as a range in the business time zone. */
+export const isMonthKey = (value: string) => /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
+
+export function monthRange(month: string, now = new Date(), tz = TIMESHEET_TZ): DateRange {
+  const [y, m] = month.split("-").map(Number);
+  return rangeFromKeys(toKey(Date.UTC(y, m - 1, 1)), toKey(Date.UTC(y, m, 0)), tz, now);
+}
+
+/** "YYYY-MM" of the month `now` falls in, in the business time zone. */
+export function currentMonthKey(now = new Date(), tz = TIMESHEET_TZ): string {
+  return zonedDay(tz, 0, now).key.slice(0, 7);
+}
+
+// ---------------------------------------------------------------------------
+// Clipping to a range and splitting at midnight
+// ---------------------------------------------------------------------------
+//
+// A time entry is one segment of work with stored start/end timestamps and its worked seconds
+// (paused gaps are already separate segments). A segment that crosses midnight or a month end is
+// split at the boundary in the business time zone; the stored timestamps are never changed.
+
+export interface Segment {
+  startedAt: Date;
+  /** null while it runs; it counts up to `now`. */
+  endedAt: Date | null;
+  /** Worked seconds recorded for the whole segment. */
+  seconds: number;
+}
+
+/** Fraction of [start, end) that falls in [from, to). */
+function overlapShare(start: number, end: number, from: number, to: number): number {
+  if (end <= start) return start >= from && start < to ? 1 : 0;
+  const overlap = Math.min(end, to) - Math.max(start, from);
+  return overlap <= 0 ? 0 : Math.min(1, overlap / (end - start));
+}
+
+/** Worked seconds of a segment that fall inside [from, to). */
+export function secondsInRange(segment: Segment, from: Date, to: Date, now = new Date()): number {
+  const end = (segment.endedAt ?? now).getTime();
+  const share = overlapShare(segment.startedAt.getTime(), end, from.getTime(), to.getTime());
+  return share >= 1 ? segment.seconds : Math.round(segment.seconds * share);
+}
+
+export interface DayPart {
+  /** YYYY-MM-DD in the business zone. */
+  key: string;
+  seconds: number;
+}
+
+/**
+ * Splits a segment's worked seconds across the calendar days it touches (business zone).
+ * The parts always add up to the segment's seconds.
+ */
+export function splitByDay(segment: Segment, now = new Date(), tz = TIMESHEET_TZ): DayPart[] {
+  const start = segment.startedAt.getTime();
+  const end = (segment.endedAt ?? now).getTime();
+  const firstKey = dayKeyInZone(segment.startedAt, tz);
+  const lastKey = dayKeyInZone(new Date(Math.max(start, end - 1)), tz);
+  if (firstKey === lastKey) return [{ key: firstKey, seconds: segment.seconds }];
+
+  const parts: DayPart[] = [];
+  let assigned = 0;
+  for (let key = firstKey; ; key = toKey(utcDay(key) + DAY_MS)) {
+    const isLast = key === lastKey;
+    const from = startOfDayKey(key, tz, now).getTime();
+    const to = startOfDayKey(toKey(utcDay(key) + DAY_MS), tz, now).getTime();
+    const seconds = isLast ? segment.seconds - assigned : Math.round(segment.seconds * overlapShare(start, end, from, to));
+    assigned += seconds;
+    parts.push({ key, seconds });
+    if (isLast || parts.length > 400) break;
+  }
+  return parts;
+}
+
 // ---------------------------------------------------------------------------
 // Aggregation
 // ---------------------------------------------------------------------------
@@ -110,7 +188,10 @@ export interface TimesheetEntry {
   startedAt: Date;
   endedAt: Date | null;
   running: boolean;
+  /** Worked seconds inside the selected range (a segment crossing the range edge is clipped). */
   seconds: number;
+  /** The same seconds split by calendar day, inside the range. */
+  days?: DayPart[];
 }
 
 export interface TimesheetGroup {
@@ -145,10 +226,16 @@ export function groupEntries(entries: TimesheetEntry[], by: GroupBy, tz = TIMESH
         key = e.userId ?? "unknown";
         label = e.userName;
         break;
-      case "day":
-        key = dayKeyInZone(e.startedAt, tz);
-        label = key;
-        break;
+      case "day": {
+        // A segment that crosses midnight counts on each day it touches.
+        for (const part of e.days ?? [{ key: dayKeyInZone(e.startedAt, tz), seconds: e.seconds }]) {
+          const row = map.get(part.key) ?? { label: part.key, seconds: 0, entries: 0 };
+          row.seconds += part.seconds;
+          row.entries += 1;
+          map.set(part.key, row);
+        }
+        continue;
+      }
     }
     const row = map.get(key) ?? { label, seconds: 0, entries: 0 };
     row.seconds += e.seconds;
@@ -159,6 +246,18 @@ export function groupEntries(entries: TimesheetEntry[], by: GroupBy, tz = TIMESH
   const groups = [...map.entries()].map(([key, r]) => ({ key, ...r, share: total > 0 ? r.seconds / total : 0 }));
   // Days read chronologically; everything else by time spent.
   return by === "day" ? groups.sort((a, b) => a.key.localeCompare(b.key)) : groups.sort((a, b) => b.seconds - a.seconds);
+}
+
+/** Seconds as HH:MM:SS (hours not capped at 24). */
+export function formatHms(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`;
+}
+
+/** Seconds as decimal hours with 4 places, for spreadsheet maths. */
+export function decimalHours(seconds: number): number {
+  return Math.round((Math.max(0, seconds) / 3600) * 10_000) / 10_000;
 }
 
 /** Hours as h:mm (e.g. 5400 s -> "1:30"), the usual timesheet format. */

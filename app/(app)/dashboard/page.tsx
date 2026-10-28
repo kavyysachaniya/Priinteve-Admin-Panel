@@ -27,6 +27,9 @@ function changeLabel(pct: number | null, suffix = "from last month") {
 
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
+import { roleHasPermission } from "@/lib/auth/permissions";
+import { getInstallerInfo } from "@/lib/services/companion/installer";
+import { DesktopAppCard } from "@/components/dashboard/desktop-app-card";
 
 export default async function DashboardPage() {
   const sessionUser = await getSession();
@@ -34,18 +37,22 @@ export default async function DashboardPage() {
     redirect("/projects");
   }
 
-  const [summary, series, activity, attention, transactions, phase2Data] = await Promise.all([
+  const canUseDesktop = !!sessionUser && roleHasPermission(sessionUser.role, "companion:use");
+  const [summary, series, activity, attention, transactions, phase2Data, installer] = await Promise.all([
     getSummaryCards(),
     getRevenueExpenseSeries("30d"),
     getRecentActivity(8),
     getNeedsAttention(),
     getRecentTransactions(8),
     getDashboardPhase2Data(),
+    canUseDesktop ? getInstallerInfo() : Promise.resolve(null),
   ]);
 
   return (
     <div className="space-y-6">
       <PageHeader title="Dashboard" description="Your business operations, finances, and daily priorities at a glance." />
+
+      {installer && <DesktopAppCard version={installer.version} sizeBytes={installer.size} />}
 
       {/* Financial Stat Cards */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">

@@ -74,7 +74,11 @@ Related: [BUSINESS-LOGIC.md](./BUSINESS-LOGIC.md) · [DEVELOPMENT.md](./DEVELOPM
 | `CalendarEvent` | Manual calendar events | Optional links to a customer, order or task |
 | `Note` | Notes | Optional links to a customer, order or task; `pinned` |
 | `Project` | Client projects | See [PROJECTS.md](./PROJECTS.md) |
-| `ProjectTimeEntry` | Timer sessions for a project | `status` `RUNNING`/`PAUSED`/`COMPLETED`, `durationSeconds`; `approvedAt` / `approvedById` (clients see approved entries only) |
+| `ProjectTimeEntry` | Timer segments for a project | `status` `RUNNING`/`PAUSED`/`COMPLETED`, `durationSeconds`; `approvedAt` / `approvedById` (clients see approved entries only); `sessionId`, unique `clientOpId`, `lastHeartbeatAt`, `source`, `stopReason`, `interrupted` (see [PROJECTS.md](./PROJECTS.md#projecttimeentry)) |
+| `TimeEntryCorrection` | Audit trail of time-entry edits, deletes and recoveries | `entryId` (SetNull), `projectId`, `action`, `reason`, `before`/`after` JSON, `changedById` (SetNull) |
+| `TimerOperation` | Idempotency ledger of desktop timer actions | unique `opId`, `userId` (cascade), `type`, `occurredAt`, `status`, `result` JSON |
+
+`Project.code` (optional, unique) and `Task.estimatedMinutes` / `Task.completedAt` support time reports. `completedAt` is set when a task becomes `COMPLETED` and cleared on reopen.
 
 ### Companion
 
@@ -168,7 +172,9 @@ Besides the unique constraints, the schema indexes the columns used for filterin
 | `Delivery` | `customerId`, `status` |
 | `Payment` | `customerId`, `invoiceId`, `paymentAccountId`, `paymentDate` |
 | `Task` | `status`, `priority`, `dueDate`, `customerId`, `projectId`, `assignedToId`, `(status, position)` |
-| `ProjectTimeEntry` | `projectId`, `userId`, `taskId`, `(projectId, startedAt)`, `(userId, startedAt)`, `(projectId, approvedAt)`; plus the partial unique index described in [PROJECTS.md](./PROJECTS.md#one-active-timer-per-user-database-index) |
+| `ProjectTimeEntry` | `projectId`, `userId`, `taskId`, `(projectId, startedAt)`, `(userId, startedAt)`, `(userId, endedAt)`, `sessionId`, `(projectId, approvedAt)`; plus the partial unique index described in [PROJECTS.md](./PROJECTS.md#one-active-timer-per-user-database-index), re-applied by `npm run db:push` |
+| `TimeEntryCorrection` | `entryId`, `projectId`, `changedById`, `createdAt` |
+| `TimerOperation` | `opId` (unique), `(userId, receivedAt)` |
 | `CalendarEvent` | `startDate`, `customerId`, `orderId`, `taskId` |
 | `Note` | `pinned`, `customerId`, `orderId`, `taskId` |
 | `Project` | `status`, `priority`, `customerId`, `assignedToId`, `name` |
