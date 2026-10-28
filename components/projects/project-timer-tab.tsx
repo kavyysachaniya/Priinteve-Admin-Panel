@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -70,20 +70,23 @@ interface TimeEntryData {
   } | null;
 }
 
+interface ActiveTimerData {
+  id: string;
+  startedAt: Date | string;
+  elapsedSeconds: number;
+  userId: string | null;
+  userName: string | null;
+  taskDescription?: string | null;
+  taskId?: string | null;
+}
+
 interface ProjectTimerTabProps {
   projectId: string;
   projectName: string;
   initialEntries: TimeEntryData[];
   totalDurationSeconds: number;
-  activeTimer: {
-    id: string;
-    startedAt: Date | string;
-    elapsedSeconds: number;
-    userId: string | null;
-    userName: string | null;
-    taskDescription?: string | null;
-    taskId?: string | null;
-  } | null;
+  /** Every timer running on the project; several people can track time on it at once. */
+  activeTimers: ActiveTimerData[];
   currentUserRole?: string;
   currentUserId?: string;
   tasks?: Array<{ id: string; title: string }>;
@@ -94,7 +97,7 @@ export function ProjectTimerTab({
   projectName,
   initialEntries,
   totalDurationSeconds,
-  activeTimer,
+  activeTimers,
   currentUserRole,
   currentUserId,
   tasks = [],
@@ -104,9 +107,9 @@ export function ProjectTimerTab({
 
   // State
   const [entries, setEntries] = useState<TimeEntryData[]>(initialEntries);
-  const [serverActiveTimer, setServerActiveTimer] = useState(activeTimer);
+  const [serverActiveTimers, setServerActiveTimers] = useState<ActiveTimerData[]>(activeTimers);
   const [startModalOpen, setStartModalOpen] = useState(false);
-  const [stopModalOpen, setStopModalOpen] = useState(false);
+  const [stopTarget, setStopTarget] = useState<ActiveTimerData | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
 
   // Form states
@@ -125,21 +128,27 @@ export function ProjectTimerTab({
   const [now] = useState(() => Date.now());
 
   // Live timer ticker
-  const [sessionSeconds, setSessionSeconds] = useState(() => {
-    if (!activeTimer) return 0;
-    const started = new Date(activeTimer.startedAt).getTime();
-    return Math.max(0, Math.floor((Date.now() - started) / 1000));
-  });
-
+  const [tickNow, setTickNow] = useState(() => Date.now());
   useEffect(() => {
-    if (!serverActiveTimer) return;
-
-    const startedTime = new Date(serverActiveTimer.startedAt).getTime();
-    const interval = setInterval(() => {
-      setSessionSeconds(Math.max(0, Math.floor((Date.now() - startedTime) / 1000)));
-    }, 1000);
+    if (serverActiveTimers.length === 0) return;
+    const interval = setInterval(() => setTickNow(Date.now()), 1000);
     return () => clearInterval(interval);
-  }, [serverActiveTimer]);
+  }, [serverActiveTimers.length]);
+
+  const elapsedOf = (timer: ActiveTimerData) =>
+    Math.max(0, Math.floor((tickNow - new Date(timer.startedAt).getTime()) / 1000));
+
+  const myActiveTimer = serverActiveTimers.find((t) => t.userId && t.userId === currentUserId) ?? null;
+
+  // Re-reads who is running a timer on this project (staff only; clients keep the server-rendered view).
+  const refreshActiveTimers = useCallback(async () => {
+    if (isClient) return;
+    const res = await fetch(`/api/projects/${projectId}/timer/status`);
+    if (res.ok) {
+      const data = await res.json();
+      setServerActiveTimers(data.activeTimers || []);
+    }
+  }, [projectId, isClient]);
 
   // Polling for live entries and active timer updates (15s)
   useEffect(() => {
@@ -150,21 +159,7 @@ export function ProjectTimerTab({
           const data = await res.json();
           setEntries(data);
         }
-
-        const activeRes = await fetch(`/api/timer/active`);
-        if (activeRes.ok) {
-          const activeData = await activeRes.json();
-          if (activeData.activeTimer && activeData.activeTimer.projectId === projectId) {
-            setServerActiveTimer(activeData.activeTimer);
-          } else if (!isClient) {
-            // Check if someone else is running on this project
-            const statusRes = await fetch(`/api/projects/${projectId}`);
-            if (statusRes.ok) {
-              const pData = await statusRes.json();
-              setServerActiveTimer(pData.activeTimer || null);
-            }
-          }
-        }
+        await refreshActiveTimers();
       } catch {
         // Silently ignore polling hiccups
       }
@@ -172,7 +167,7 @@ export function ProjectTimerTab({
 
     const interval = setInterval(pollEntries, 15000);
     return () => clearInterval(interval);
-  }, [projectId, isClient]);
+  }, [projectId, refreshActiveTimers]);
 
   // Start timer
   const handleStartTimer = async (e: React.FormEvent) => {
@@ -203,8 +198,8 @@ export function ProjectTimerTab({
         : "";
       toast.success(`Timer started.${autoStoppedMsg}`);
 
-      setServerActiveTimer(data.entry);
       setStartModalOpen(false);
+      await refreshActiveTimers();
       notifyTimerChanged();
       router.refresh();
     } catch (err: unknown) {
@@ -214,8 +209,9 @@ export function ProjectTimerTab({
     }
   };
 
-  // Stop this project's running timer (an admin can stop someone else's)
+  // Stop one running timer on this project: your own, or (admin) someone else's
   const handleStopTimer = async () => {
+    if (!stopTarget) return;
     setIsSubmitting(true);
     try {
       const res = await fetch(`/api/projects/${projectId}/timer/stop`, {
@@ -223,6 +219,7 @@ export function ProjectTimerTab({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           taskDescription: stopTaskDescription.trim() || undefined,
+          userId: stopTarget.userId || undefined,
         }),
       });
 
@@ -232,8 +229,8 @@ export function ProjectTimerTab({
       }
 
       toast.success("Timer stopped.");
-      setServerActiveTimer(null);
-      setStopModalOpen(false);
+      setServerActiveTimers((prev) => prev.filter((t) => t.id !== stopTarget.id));
+      setStopTarget(null);
       notifyTimerChanged();
       router.refresh();
     } catch (err: unknown) {
@@ -401,13 +398,15 @@ export function ProjectTimerTab({
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground font-medium">Currently Working</p>
-                  {serverActiveTimer ? (
-                    <p className="text-sm font-semibold text-foreground">
-                      {serverActiveTimer.userName || "Team member"}
-                      <span className="block text-[11px] text-muted-foreground truncate max-w-[200px]">
-                        {serverActiveTimer.taskDescription || "Working on project"}
-                      </span>
-                    </p>
+                  {serverActiveTimers.length > 0 ? (
+                    serverActiveTimers.map((timer) => (
+                      <p key={timer.id} className="text-sm font-semibold text-foreground">
+                        {timer.userName || "Team member"}
+                        <span className="block text-[11px] text-muted-foreground truncate max-w-[200px]">
+                          {timer.taskDescription || "Working on project"}
+                        </span>
+                      </p>
+                    ))
                   ) : (
                     <p className="text-sm text-muted-foreground italic">No active session</p>
                   )}
@@ -514,12 +513,12 @@ export function ProjectTimerTab({
         /* Employee / Admin Mode (Spec 4.4) */
         <div className="space-y-6">
           {/* Active Timer Card / Start Control */}
-          <Card className={serverActiveTimer ? "border-emerald-500/40 bg-emerald-500/5" : ""}>
-            <CardContent className="p-6">
+          <Card className={serverActiveTimers.length > 0 ? "border-emerald-500/40 bg-emerald-500/5" : ""}>
+            <CardContent className="p-6 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    {serverActiveTimer ? (
+                    {serverActiveTimers.length > 0 ? (
                       <span className="relative flex size-2.5">
                         <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                         <span className="relative inline-flex size-2.5 rounded-full bg-emerald-500" />
@@ -528,63 +527,70 @@ export function ProjectTimerTab({
                       <Clock className="size-4 text-muted-foreground" />
                     )}
                     <h3 className="text-sm font-semibold tracking-tight">
-                      {serverActiveTimer ? "Active Work Session" : "Project Timer"}
+                      {serverActiveTimers.length > 1
+                        ? `Active Work Sessions (${serverActiveTimers.length})`
+                        : serverActiveTimers.length === 1
+                          ? "Active Work Session"
+                          : "Project Timer"}
                     </h3>
                   </div>
-
-                  {serverActiveTimer ? (
-                    <div>
-                      <p className="text-xs font-medium text-foreground">
-                        {serverActiveTimer.userName || "Team member"} is working
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {serverActiveTimer.taskDescription || "Working on project"}
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      Track billable or production hours directly on this project.
-                    </p>
-                  )}
+                  <p className="text-xs text-muted-foreground">
+                    {myActiveTimer
+                      ? "Your timer is running on this project."
+                      : "Track billable or production hours directly on this project."}
+                  </p>
                 </div>
 
-                <div className="flex items-center gap-4">
-                  {serverActiveTimer && (
-                    <div className="text-right">
-                      <span className="text-[10px] text-muted-foreground uppercase font-semibold block">
-                        Elapsed
-                      </span>
-                      <span className="font-mono text-2xl font-bold tracking-tight text-emerald-700 dark:text-emerald-400">
-                        {formatTimerClock(sessionSeconds)}
-                      </span>
-                    </div>
-                  )}
-
-                  {serverActiveTimer ? (
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      className="gap-1.5"
-                      onClick={() => {
-                        setStopTaskDescription(serverActiveTimer.taskDescription || "");
-                        setStopModalOpen(true);
-                      }}
-                    >
-                      <Square className="size-3.5 fill-current" />
-                      Stop Timer
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
-                      onClick={() => setStartModalOpen(true)}
-                    >
-                      <Play className="size-3.5 fill-current" />
-                      Start Timer
-                    </Button>
-                  )}
-                </div>
+                {!myActiveTimer && (
+                  <Button
+                    size="sm"
+                    className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                    onClick={() => setStartModalOpen(true)}
+                  >
+                    <Play className="size-3.5 fill-current" />
+                    Start Timer
+                  </Button>
+                )}
               </div>
+
+              {serverActiveTimers.length > 0 && (
+                <div className="divide-y rounded-lg border bg-background/60">
+                  {serverActiveTimers.map((timer) => {
+                    const isMine = Boolean(timer.userId) && timer.userId === currentUserId;
+                    return (
+                      <div key={timer.id} className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-foreground">
+                            {isMine ? "You are" : `${timer.userName || "Team member"} is`} working
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {timer.taskDescription || "Working on project"}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <span className="font-mono text-xl font-bold tracking-tight text-emerald-700 dark:text-emerald-400">
+                            {formatTimerClock(elapsedOf(timer))}
+                          </span>
+                          {(isMine || isAdmin) && (
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              className="gap-1.5"
+                              onClick={() => {
+                                setStopTaskDescription(timer.taskDescription || "");
+                                setStopTarget(timer);
+                              }}
+                            >
+                              <Square className="size-3.5 fill-current" />
+                              Stop
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -841,16 +847,21 @@ export function ProjectTimerTab({
       </Dialog>
 
       {/* Stop Timer Modal (Spec 4.4: Optionally edit description at stop) */}
-      <Dialog open={stopModalOpen} onOpenChange={setStopModalOpen}>
+      <Dialog open={stopTarget !== null} onOpenChange={(open) => !open && setStopTarget(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Stop Work Session</DialogTitle>
             <DialogDescription>
+              {stopTarget && stopTarget.userId !== currentUserId && (
+                <>
+                  You are stopping <strong>{stopTarget.userName || "a team member"}</strong>&apos;s timer.{" "}
+                </>
+              )}
               Recorded session duration:{" "}
               <span className="font-mono font-semibold text-foreground">
-                {formatTimerClock(sessionSeconds)}
+                {formatTimerClock(stopTarget ? elapsedOf(stopTarget) : 0)}
               </span>
-              . You may update your task description before saving.
+              . You may update the task description before saving.
             </DialogDescription>
           </DialogHeader>
 
@@ -869,7 +880,7 @@ export function ProjectTimerTab({
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setStopModalOpen(false)}
+              onClick={() => setStopTarget(null)}
               disabled={isSubmitting}
             >
               Cancel

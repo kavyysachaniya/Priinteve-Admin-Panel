@@ -117,7 +117,8 @@ function ProjectTimerControls({
     }
   };
 
-  if (project.timerStatus === "RUNNING") {
+  // Quick controls act on the viewer's own timer; others may be running on the same project.
+  if (project.myTimerStatus === "RUNNING") {
     return (
       <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
         <Button
@@ -144,7 +145,7 @@ function ProjectTimerControls({
     );
   }
 
-  if (project.timerStatus === "PAUSED") {
+  if (project.myTimerStatus === "PAUSED") {
     return (
       <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
         <Button
@@ -190,34 +191,32 @@ function ProjectTimerControls({
 
 function LiveDurationCell({
   totalDurationSeconds,
-  activeTimer,
+  activeTimers,
 }: {
   totalDurationSeconds: number;
-  activeTimer: ProjectListItem["activeTimer"];
+  activeTimers: ProjectListItem["activeTimers"];
 }) {
-  const [currentElapsed, setCurrentElapsed] = useState(() => {
-    if (!activeTimer) return totalDurationSeconds;
+  // The server total already includes each running timer up to render time; add what has passed since.
+  const liveTotal = () => {
     const now = Date.now();
-    const started = new Date(activeTimer.startedAt).getTime();
-    const sessionSeconds = Math.max(0, Math.floor((now - started) / 1000));
-    return totalDurationSeconds - activeTimer.elapsedSeconds + sessionSeconds;
-  });
+    return activeTimers.reduce((total, timer) => {
+      const sessionSeconds = Math.max(0, Math.floor((now - new Date(timer.startedAt).getTime()) / 1000));
+      return total - timer.elapsedSeconds + sessionSeconds;
+    }, totalDurationSeconds);
+  };
+
+  const [currentElapsed, setCurrentElapsed] = useState(liveTotal);
 
   useEffect(() => {
-    if (!activeTimer) {
+    if (activeTimers.length === 0) {
       setCurrentElapsed(totalDurationSeconds);
       return;
     }
 
-    const interval = setInterval(() => {
-      const now = Date.now();
-      const started = new Date(activeTimer.startedAt).getTime();
-      const sessionSeconds = Math.max(0, Math.floor((now - started) / 1000));
-      setCurrentElapsed(totalDurationSeconds - activeTimer.elapsedSeconds + sessionSeconds);
-    }, 1000);
-
+    const interval = setInterval(() => setCurrentElapsed(liveTotal()), 1000);
     return () => clearInterval(interval);
-  }, [activeTimer, totalDurationSeconds]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTimers, totalDurationSeconds]);
 
   return (
     <div className="font-mono text-xs font-semibold tabular-nums text-foreground flex items-center gap-1.5">
@@ -333,13 +332,20 @@ export function ProjectList({ projects }: { projects: ProjectListItem[] }) {
               <TableCell className="align-top py-3">
                 <LiveDurationCell
                   totalDurationSeconds={project.totalDurationSeconds}
-                  activeTimer={project.activeTimer}
+                  activeTimers={project.activeTimers}
                 />
               </TableCell>
 
               {/* Current Timer Status */}
               <TableCell className="align-top py-3">
-                <TimerStatusBadge status={project.timerStatus} />
+                <div className="flex items-center gap-1.5">
+                  <TimerStatusBadge status={project.timerStatus} />
+                  {project.activeTimers.length > 1 && (
+                    <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                      ×{project.activeTimers.length}
+                    </span>
+                  )}
+                </div>
               </TableCell>
 
               {/* Quick Timer Controls */}

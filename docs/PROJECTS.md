@@ -105,10 +105,10 @@ Timer operations in `lib/services/projects.ts` run in a **Serializable** transac
 
 | Operation | Preconditions | Effect |
 |---|---|---|
-| **Start** | Project isn't `COMPLETED`; caller is Admin or assigned employee; the task (if any) belongs to the project and isn't completed or cancelled | New `RUNNING` segment and session. With `autoStopPrevious` (every UI path), the caller's running segment is completed first (`stopReason` `SWITCH`) and their paused session is closed. A `TODO` task moves to `IN_PROGRESS`. Another user's running timer on the same project blocks the start. |
-| **Pause** | The project has a `RUNNING` entry **owned by the caller** | That segment → `PAUSED`, `endedAt` = the pause time. Pausing again returns the paused segment (no-op). |
+| **Start** | Project isn't `COMPLETED`; caller is Admin or assigned employee; the task (if any) belongs to the project and isn't completed or cancelled | New `RUNNING` segment and session. With `autoStopPrevious` (every UI path), the caller's running segment is completed first (`stopReason` `SWITCH`) and their paused session is closed. A `TODO` task moves to `IN_PROGRESS`. Other people's running timers on the same project don't block it: several people can track time on one project at once. |
+| **Pause** | The caller has their own `RUNNING` entry on the project (others' timers there are untouched) | That segment → `PAUSED`, `endedAt` = the pause time. Pausing again returns the paused segment (no-op). |
 | **Resume** | Caller is assigned (Admin always) and has their **own** `PAUSED` segment on the project | That segment → `COMPLETED`. A new `RUNNING` segment opens with the same `sessionId`, task and description. Resuming while already running on the project is a no-op. |
-| **Stop** | Caller owns the running segment (Admins may stop anyone's) | Running segment → `COMPLETED` with `stopReason`. Only the **owner's** paused segments on the project are completed, never other users'. Stopping with nothing open succeeds as a no-op. |
+| **Stop** | Caller owns the running segment, or is an Admin passing `forUserId` (the Timer tab sends it as `userId`). An Admin with no timer of their own on the project, stopping without naming anyone, stops the one other running timer; with several running they must choose on the Timer tab | Running segment → `COMPLETED` with `stopReason`. Only the **owner's** paused segments on the project are completed, never other users'. Stopping with nothing open succeeds as a no-op. |
 
 Every operation accepts `TimerOpOptions`:
 - `at`: a past time for an action queued offline. It is clamped so it is never in the future and never before the segment it closes.
@@ -162,7 +162,7 @@ JSON routes for programmatic use and client components:
 | `/api/projects/[id]/assignments/[employeeId]` | DELETE | ADMIN | Unassign employee |
 | `/api/projects/[id]/tasks` | GET, POST | All (scoped) | List / create project tasks |
 | `/api/projects/[id]/timer/start` | POST | ADMIN, EMPLOYEE (assigned) | Start timer (`taskDescription`, optional `taskId`) |
-| `/api/projects/[id]/timer/pause`, `resume`, `stop` | POST | ADMIN, owner | Pause / resume / stop |
+| `/api/projects/[id]/timer/pause`, `resume`, `stop` | POST | ADMIN, owner | Pause / resume / stop. `stop` takes optional `taskDescription` and `userId` (whose timer; Admin only for someone else's) |
 | `/api/projects/[id]/timer/status` | GET | All with access to the project | Timer status; redacted for clients (no name or task) |
 | `/api/time-entries/[id]/corrections` | GET | ADMIN, owner | Correction history of an entry |
 | `/api/companion/timer`, `/api/companion/timer/ops` | GET, POST | Device token (`projects:timer`) | Desktop time tracker; see [COMPANION.md](./COMPANION.md#desktop-time-tracker) |

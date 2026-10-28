@@ -66,7 +66,7 @@ What it checks:
 1. Uses the **first `ADMIN` user** for steps 3–7 (creates one only if there are none). Make sure that admin has no running timer. Steps 9a–9h use throwaway employees.
 2. Creates the customer "Acme Corp Design Client" and the projects "Brand Identity Redesign" and "Product Packaging Design".
 3. Starting a timer moves the project to `IN_PROGRESS`.
-4. A second start on the same project is rejected, and so is a start on another project by the same user.
+4. A second start by the same user is rejected, on the same project or another one.
 5. **Ownership:** a temporary second user (`EMPLOYEE`) can't pause or stop the first user's timer, and the timer keeps running. The temporary user is deleted.
 6. Pause records ≥ 2 seconds; resume creates a new entry; stop leaves 2 entries totalling ≥ 4 seconds and status `IDLE`.
 7. Pause/resume segments share one `sessionId`.
@@ -77,7 +77,8 @@ What it checks:
    - resume and start replays with the same op id don't duplicate;
    - switching projects stops the first session with `SWITCH`;
    - an offline stop keeps its recorded time;
-   - edits and deletes write `EDIT` then `DELETE` correction rows.
+   - edits and deletes write `EDIT` then `DELETE` correction rows;
+   - two employees run timers on one project at once; pause touches only the caller's; an employee can't stop the other's; an Admin can.
 9. Checks the project statistics.
 
 Cleanup:
@@ -123,4 +124,4 @@ Run the app (`npm run dev`) and sign in. Use an Admin and an Employee account.
 ### Orders and projects
 
 - [ ] New order → the total label shows "Inc GST x%" with the rate from Settings, and the total updates as lines change.
-- [ ] Projects: start, pause, resume and stop a timer. As a second user, try to pause the first user's running timer → "You can only control your own timer."
+- [ ] Projects: start, pause, resume and stop a timer. As a second user, start your own timer on the same project → both appear on the Timer tab. As an Employee you get a Stop button only on your own; as an Admin, on each.

@@ -275,6 +275,38 @@ async function main() {
     assert(audit.length === 2 && audit[0].action === "EDIT" && audit[1].action === "DELETE", "Expected EDIT then DELETE audit rows");
     assert(audit[1].entryId === null && (audit[1].before as { durationSeconds: number }).durationSeconds === edited.durationSeconds, "Delete keeps a snapshot");
     console.log("   OK: audit rows", audit.map((a) => a.action).join(", "));
+
+    console.log("9i) Two people run timers on one project; only an admin stops someone else's…");
+    const a = await projectService.startProjectTimer(project2.id, emp.id, "Parallel A", null, { autoStopPrevious: true });
+    const b = await projectService.startProjectTimer(project2.id, emp2.id, "Parallel B", null, { autoStopPrevious: true });
+    const parallel = await projectService.getProjectById(project2.id);
+    assert(parallel?.activeTimers.length === 2, "Both timers must run on the project at once");
+    let pauseBlocked = false;
+    try {
+      await projectService.pauseProjectTimer(project2.id, outsider.id);
+    } catch {
+      pauseBlocked = true;
+    }
+    assert(pauseBlocked, "A user without a timer here must not pause someone else's");
+    let stopBlocked = false;
+    try {
+      await projectService.stopProjectTimer(project2.id, emp.id, undefined, { forUserId: emp2.id });
+    } catch (err) {
+      stopBlocked = err instanceof Error && err.message.includes("only control your own timer");
+    }
+    assert(stopBlocked, "An employee must not stop another employee's timer");
+    await projectService.pauseProjectTimer(project2.id, emp.id);
+    const afterPause = await prisma.projectTimeEntry.findMany({ where: { id: { in: [a.id, b.id] } } });
+    assert(
+      afterPause.find((e) => e.id === a.id)?.status === "PAUSED" && afterPause.find((e) => e.id === b.id)?.status === "RUNNING",
+      "Pausing must touch only the caller's own timer"
+    );
+    await projectService.stopProjectTimer(project2.id, user.id, undefined, { forUserId: emp2.id });
+    const afterAdminStop = await prisma.projectTimeEntry.findMany({ where: { id: { in: [a.id, b.id] } } });
+    assert(afterAdminStop.find((e) => e.id === b.id)?.status === "COMPLETED", "Admin must be able to stop emp2's timer");
+    assert(afterAdminStop.find((e) => e.id === a.id)?.status === "PAUSED", "Admin stop must leave emp's paused session alone");
+    await projectService.stopProjectTimer(project2.id, emp.id);
+    console.log("   OK");
   } finally {
     await prisma.projectTimeEntry.deleteMany({ where: { userId: { in: [emp.id, emp2.id, outsider.id] } } });
     await prisma.timeEntryCorrection.deleteMany({ where: { projectId: { in: [project.id, project2.id] } } });
