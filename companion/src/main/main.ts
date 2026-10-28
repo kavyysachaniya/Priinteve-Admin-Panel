@@ -203,12 +203,23 @@ function ensureWindow(): BrowserWindow {
   mainWin = win;
   win.on("close", (event) => {
     if (quitting) return;
-    // Closing hides to the tray; the timer keeps going on the server either way.
     event.preventDefault();
-    win.hide();
-    if (!hintedTray && timer?.isActive()) {
+    if (!timer?.isActive()) {
+      // Nothing to protect: hide to the tray.
+      win.hide();
+      return;
+    }
+    // Windows ignores a shutdown refusal from an app with no visible window and closes it anyway
+    // (learn.microsoft.com/windows/win32/shutdown/shutdown-changes-for-windows-vista), so while a
+    // timer is open the window only minimises to the taskbar.
+    win.minimize();
+    if (!hintedTray) {
       hintedTray = true;
-      notify("Timer still running", "Priinteve is in the tray. Stop the timer from there or reopen this window.", () => showWindow("timer"));
+      notify(
+        "Timer still running",
+        "Priinteve stays in the taskbar while a timer is open, so Windows asks before restarting or shutting down.",
+        () => showWindow("timer"),
+      );
     }
   });
   win.on("moved", () => {
@@ -225,7 +236,12 @@ function ensureWindow(): BrowserWindow {
       setBanner({ kind: "shutdown", phase: "ask" });
       showWindow("timer", true);
     },
-    ended: () => log("info", "Windows is ending the session; the timer journal is already on disk"),
+    ended: () => {
+      // Windows is going ahead anyway (forced, or the person chose "Restart anyway"). Note when,
+      // so the next start asks what to record instead of counting the time the PC was off.
+      timer?.markSessionEnded();
+      log("info", "Windows is ending the session; the timer journal is already on disk");
+    },
   });
   onTimerChanged();
   return win;
@@ -275,6 +291,7 @@ function onTimerChanged(): void {
 
   // Windows shows this text on its "apps preventing shutdown" screen while a timer is open.
   if (mainWin && !mainWin.isDestroyed()) setShutdownBlockReason(mainWin, view.status === "IDLE" ? null : BLOCK_REASON);
+  ensureVisibleWhileActive(view.status !== "IDLE");
 
   if (view.status === "IDLE" && banner?.kind === "quit") setBanner(null);
   updateTray();
@@ -283,6 +300,18 @@ function onTimerChanged(): void {
     clearInterval(trayTicker);
     trayTicker = null;
   }
+}
+
+/**
+ * Only an app with a visible window may refuse a Windows shutdown or restart. While a timer is
+ * open (started here, in the browser, or found at startup) the window is kept at least minimised
+ * in the taskbar, without taking focus.
+ */
+function ensureVisibleWhileActive(active: boolean): void {
+  const win = mainWin;
+  if (!active || !win || win.isDestroyed() || win.isVisible()) return;
+  win.showInactive();
+  win.minimize();
 }
 
 function onInterruption(i: Interruption): void {

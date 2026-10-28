@@ -1,7 +1,7 @@
 // Offline checks for the desktop timer's journal and sync logic (no Electron, no network).
 //   npm run build && node scripts/test-timer.mjs
 import assert from "node:assert/strict";
-import { appendFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import Module, { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
@@ -222,6 +222,32 @@ await check("an interrupted session is reported once, and not again after a choi
   restarted.onInterruption(() => (again += 1));
   await restarted.flush();
   assert.equal(again, 0, "dismissed gap is remembered across restarts");
+  await restarted.act({ type: "STOP" });
+});
+
+await check("a forced Windows session end is asked about on the next start, even after a short gap", async () => {
+  server.heartbeat = null; // the heartbeat gap alone would not trigger the prompt
+  const marker = path.join(dir, "session-ended.json");
+  const idle = new TimerController(deps);
+  await idle.flush();
+  idle.markSessionEnded();
+  assert.equal(existsSync(marker), false, "no marker when no timer is open");
+
+  const t = new TimerController(deps);
+  await t.act({ type: "START", projectId: "p1", taskId: "t1" });
+  t.markSessionEnded();
+  assert.equal(existsSync(marker), true, "marker written while a timer is open");
+  const at = JSON.parse(readFileSync(marker, "utf8")).at;
+  assert.equal(t.isActive(), true, "the timer is not stopped by the session end");
+
+  const restarted = new TimerController(deps);
+  const seen = [];
+  restarted.onInterruption((i) => seen.push(i));
+  await restarted.flush();
+  await restarted.flush();
+  assert.equal(seen.length, 1, "one prompt");
+  assert.equal(seen[0].lastConfirmedAt, at, "last confirmed time is when Windows ended the session");
+  assert.equal(existsSync(marker), false, "marker consumed");
   await restarted.act({ type: "STOP" });
 });
 

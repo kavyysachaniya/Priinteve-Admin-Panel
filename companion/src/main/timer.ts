@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { closeSync, fsyncSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import type { ServerSession, ServerTimerState, StopReason, SyncState, TimerOp, TimerView } from "../shared/timer";
@@ -134,6 +134,9 @@ function applyOp(p: Projection, op: TimerOp): Projection {
 export class TimerController {
   private readonly journal: TimerJournal;
   private readonly cacheFile: string;
+  /** Written when Windows ends the session with a timer open; read once on the next start. */
+  private readonly endedFile: string;
+  private endedChecked = false;
   private cache: CacheFile;
   private sync: SyncState = "pending";
   private anchor = { serverMs: 0, monoMs: 0 };
@@ -147,6 +150,7 @@ export class TimerController {
   constructor(private readonly deps: TimerDeps) {
     this.journal = new TimerJournal(path.join(deps.dataDir, "timer-journal.jsonl"));
     this.cacheFile = path.join(deps.dataDir, "timer-state.json");
+    this.endedFile = path.join(deps.dataDir, "session-ended.json");
     this.cache = this.readCache();
     this.reanchor();
     if (this.journal.pending().length > 0) log("info", `Timer journal has ${this.journal.pending().length} unsent action(s)`);
@@ -290,6 +294,28 @@ export class TimerController {
     };
   }
 
+  /**
+   * Windows is ending the session (forced restart, "Restart anyway", sign-out) while a timer is
+   * open. Synchronously notes when, because the process is killed right after. The timer is not
+   * stopped: on the next start the person chooses what to record.
+   */
+  markSessionEnded(): void {
+    const p = this.projection();
+    if (p.status === "IDLE") return;
+    try {
+      const data = JSON.stringify({ at: new Date(this.serverNow()).toISOString(), entryId: p.entryId, sessionId: p.sessionId });
+      const fd = openSync(this.endedFile, "w");
+      try {
+        writeSync(fd, data);
+        fsyncSync(fd);
+      } finally {
+        closeSync(fd);
+      }
+    } catch (err) {
+      log("warn", `Could not record the session end: ${describeError(err)}`);
+    }
+  }
+
   dismissNotice(id: string): void {
     this.cache.notices = this.cache.notices.filter((n) => n.id !== id);
     this.writeCache();
@@ -374,8 +400,49 @@ export class TimerController {
     this.failures = 0;
     this.sync = "synced";
     this.writeCache();
+    this.checkSessionEnded(state);
     this.checkInterruption(state);
     this.emit();
+  }
+
+  /** First sync after a start: a session that Windows ended with the timer open is an interruption. */
+  private checkSessionEnded(state: ServerTimerState): void {
+    if (this.endedChecked) return;
+    this.endedChecked = true;
+    let marker: { at?: string; sessionId?: string | null };
+    try {
+      marker = JSON.parse(readFileSync(this.endedFile, "utf8"));
+    } catch {
+      return; // no marker
+    }
+    try {
+      unlinkSync(this.endedFile);
+    } catch {
+      // Already gone.
+    }
+    const s = state.session;
+    if (!s || s.status !== "RUNNING" || !marker.at || Number.isNaN(Date.parse(marker.at))) return;
+    // A marker from an offline start has no session id yet; then any running session started before it matches.
+    const sameSession = marker.sessionId ? marker.sessionId === s.sessionId : Date.parse(s.segmentStartedAt) <= Date.parse(marker.at);
+    if (!sameSession) return;
+    const key = `${s.entryId}@ended:${marker.at}`;
+    if (this.cache.dismissedInterruptions.includes(key)) return;
+    this.raiseInterruption({
+      key,
+      entryId: s.entryId,
+      sessionId: s.sessionId,
+      projectName: s.projectName,
+      taskTitle: s.taskTitle,
+      startedAt: s.segmentStartedAt,
+      lastConfirmedAt: marker.at,
+      detectedAt: state.serverTime,
+    });
+  }
+
+  private raiseInterruption(interruption: Interruption): void {
+    this.interruption = interruption;
+    log("info", `Interrupted session on ${interruption.entryId}, last confirmed ${interruption.lastConfirmedAt}`);
+    for (const l of this.interruptionListeners) l(interruption);
   }
 
   private fail(error: TimerCallError): void {
@@ -392,7 +459,9 @@ export class TimerController {
     if (gap < INTERRUPTED_AFTER_MS) return;
     const key = `${s.entryId}@${s.lastHeartbeatAt}`;
     if (this.cache.dismissedInterruptions.includes(key) || this.interruption?.key === key) return;
-    this.interruption = {
+    // One prompt for this session at a time (a session-end marker may already have raised it).
+    if (this.interruption?.entryId === s.entryId) return;
+    this.raiseInterruption({
       key,
       entryId: s.entryId,
       sessionId: s.sessionId,
@@ -401,9 +470,7 @@ export class TimerController {
       startedAt: s.segmentStartedAt,
       lastConfirmedAt: s.lastHeartbeatAt,
       detectedAt: state.serverTime,
-    };
-    log("info", `Interrupted session detected on ${s.entryId} (gap ${Math.round(gap / 1000)} s)`);
-    for (const l of this.interruptionListeners) l(this.interruption);
+    });
   }
 
   // -- cache ---------------------------------------------------------------

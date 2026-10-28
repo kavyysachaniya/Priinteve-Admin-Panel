@@ -79,7 +79,7 @@ These are the same steps as the Setup guide on the Companion page:
 | See the clock without the window | Hover the tray icon |
 | See your history, reports, monthly CSV | **Time history & reports** (opens `/timesheet`) |
 | See the briefing | **Today** tab, or click the morning notification |
-| Close the window | ✕ hides it to the tray; the timer keeps going |
+| Close the window | ✕ hides it to the tray. While a timer is open it minimizes to the taskbar instead (see [why](#shutdown-and-restart-protection)) |
 | Quit | Tray icon → **Quit** (asks you to stop an open timer first) |
 | Stop it starting with Windows | Tray icon → untick **Start with Windows** |
 | Stop a lost computer acting for you | Companion page → **Revoke** |
@@ -133,6 +133,15 @@ While a timer is running **or paused**, the app refuses a normal Windows shutdow
    - The block is lifted. Choose **Shut down** or **Restart** again. An app can't re-issue the request itself, and it can't tell restart from shutdown.
 5. With no timer open the app never delays a shutdown.
 
+**The window must be visible.** Microsoft: *"the system does not allow console applications or applications without a visible window to cancel shutdown. These applications are automatically terminated … if they return FALSE in response to WM_QUERYENDSESSION"* ([Shutdown Changes for Windows Vista](https://learn.microsoft.com/en-us/windows/win32/shutdown/shutdown-changes-for-windows-vista)).
+- In 0.1.0, closing the window hid it to the tray. Windows then forced the restart about a second after the app refused, and the log showed `Blocked session end` followed by `Session ending (critical)`.
+- Since 0.1.1, while a timer is open:
+  - ✕ only **minimizes** the window to the taskbar;
+  - if a timer opens while the window is hidden (for example, started in the browser), the app brings it back minimized, without taking focus.
+  - A minimized window counts as visible, so Windows waits and shows its screen.
+
+**If Windows ends the session anyway.** This covers "Restart anyway" or a forced or critical end. The app writes `session-ended.json` with the time, synchronously, before it is closed. On the next start it shows the [interrupted-session prompt](#desktop-time-tracker) with that time as the last confirmed activity, however short the restart was. The timer itself is never stopped by the session end.
+
 **Quit and updates are guarded the same way.** Tray → **Quit** asks you to stop an open timer first. An update download won't install while a timer is open.
 
 **What can't be blocked.** These still end the session:
@@ -147,7 +156,8 @@ The timer isn't marked stopped because a shutdown was requested. On the next sta
 
 - **First run.** A fresh install isn't paired, so it opens its settings window straight away, with the panel address filled in.
 - **Window.** One normal window (400 × 640, resizable) with **Timer** and **Today** tabs. Its position is remembered.
-  - ✕ hides it to the tray. The first time a timer is running it says so with a notification.
+  - With no timer open, ✕ hides the window to the tray.
+  - While a timer is open, ✕ minimizes it to the taskbar, and a notification explains why the first time. Shutdown blocking needs a visible window.
   - Clicking the tray icon, or starting the app again, brings it back.
 - **At Windows sign-in** (`--autostart`) the app stays in the tray and prepares the briefing, then shows a notification ("Good morning …") that opens the Today tab. If a timer is open, the window opens on the Timer tab.
 - **Tray menu:**
@@ -456,6 +466,7 @@ It answers `{ ok, results: [{ opId, status: APPLIED|CONFLICT|REJECTED, message }
 - **Forced shutdowns can't be blocked:** power loss, a held power button, `shutdown /f`, "Shut down anyway", a critical battery, or killing the process. They're caught by the interrupted-session prompt on the next start, never by inventing a stop time.
 - **After "Stop Timer and Continue" you start the shutdown again yourself.** Windows doesn't let an app resume it, or tell a restart from a shutdown.
 - **A paused session also blocks shutdown.** Stop it to shut down.
+- **While a timer is open, the window stays in the taskbar** (minimized) rather than only in the tray. Windows ignores a shutdown refusal from an app with no visible window.
 - **The heartbeat needs the app running.** Timers started in the browser are never flagged as interrupted.
 - **No reply drafting and no AI.**
 - **The 60-second briefing cache is per server instance.**
