@@ -13,16 +13,18 @@ export async function POST(
     const user = await requirePermission("projects:timer");
 
     let taskDescription: string | undefined;
+    let forUserId: string | undefined;
     try {
       const body = await request.json();
       if (typeof body?.taskDescription === "string") taskDescription = body.taskDescription;
+      if (typeof body?.userId === "string" && body.userId) forUserId = body.userId;
     } catch {
       // Body is optional
     }
 
     const { id } = await params;
-    // Admins may stop another user's running timer; the service enforces this.
-    await projectService.stopProjectTimer(id, user.id, taskDescription);
+    // `userId` names whose timer to stop; only an admin may stop someone else's (enforced in the service).
+    await projectService.stopProjectTimer(id, user.id, taskDescription, { forUserId });
     return NextResponse.json({ success: true, message: "Timer stopped" }, { status: 200 });
   } catch (err) {
     if (err instanceof Error && err.message.includes("only control your own timer")) {

@@ -319,7 +319,7 @@ export function ProjectDetails({
             projectName={project.name}
             initialEntries={(project.timeEntries as any) || []}
             totalDurationSeconds={project.totalDurationSeconds}
-            activeTimer={project.activeTimer}
+            activeTimers={project.activeTimers}
             currentUserRole={sessionUser?.role}
             currentUserId={sessionUser?.id}
             tasks={project.tasks?.map((t) => ({ id: t.id, title: t.title })) || []}

@@ -26,6 +26,19 @@ export interface ListProjectsParams {
   pageSize?: number;
 }
 
+export type TimerStatus = "IDLE" | "RUNNING" | "PAUSED" | "COMPLETED";
+
+/** One running timer on a project. Several people can each run one on the same project. */
+export interface ActiveTimerInfo {
+  id: string;
+  startedAt: Date;
+  elapsedSeconds: number;
+  userId: string | null;
+  userName: string | null;
+  taskDescription?: string | null;
+  taskId?: string | null;
+}
+
 export type ProjectListItem = Prisma.ProjectGetPayload<{
   include: {
     customer: { select: { id: true; name: true; email: true; phone: true } };
@@ -47,16 +60,10 @@ export type ProjectListItem = Prisma.ProjectGetPayload<{
   };
 }> & {
   totalDurationSeconds: number;
-  activeTimer: {
-    id: string;
-    startedAt: Date;
-    elapsedSeconds: number;
-    userId: string | null;
-    userName: string | null;
-    taskDescription?: string | null;
-    taskId?: string | null;
-  } | null;
-  timerStatus: "IDLE" | "RUNNING" | "PAUSED" | "COMPLETED";
+  activeTimer: ActiveTimerInfo | null;
+  activeTimers: ActiveTimerInfo[];
+  timerStatus: TimerStatus;
+  myTimerStatus: TimerStatus;
 };
 
 export type ProjectDetail = Prisma.ProjectGetPayload<{
@@ -99,22 +106,18 @@ export type ProjectDetail = Prisma.ProjectGetPayload<{
   };
 }> & {
   totalDurationSeconds: number;
-  activeTimer: {
-    id: string;
-    startedAt: Date;
-    elapsedSeconds: number;
-    userId: string | null;
-    userName: string | null;
-    taskDescription?: string | null;
-    taskId?: string | null;
-  } | null;
-  timerStatus: "IDLE" | "RUNNING" | "PAUSED" | "COMPLETED";
+  activeTimer: ActiveTimerInfo | null;
+  activeTimers: ActiveTimerInfo[];
+  timerStatus: TimerStatus;
+  myTimerStatus: TimerStatus;
 };
 
 export type ProjectWithDetails = ProjectListItem;
 
 /**
- * Calculates current project duration and active timer details based on server time
+ * Calculates current project duration and active timer details based on server time.
+ * `activeTimers` lists every running timer (newest first); `activeTimer` is the newest one.
+ * `myTimerStatus` is the viewer's own timer state on the project.
  */
 export function computeProjectTimerMetrics(project: {
   status: ProjectStatus;
@@ -130,19 +133,27 @@ export function computeProjectTimerMetrics(project: {
     taskId?: string | null;
     notes?: string | null;
   }>;
-}, options: { approvedOnly?: boolean } = {}) {
+}, options: { approvedOnly?: boolean; viewerId?: string } = {}) {
   const now = Date.now();
   let totalDurationSeconds = 0;
-  let runningEntry: (typeof project.timeEntries)[0] | null = null;
+  const runningEntries: (typeof project.timeEntries)[0][] = [];
   let latestEntry: (typeof project.timeEntries)[0] | null = null;
+  let myLatestEntry: (typeof project.timeEntries)[0] | null = null;
 
   for (const entry of project.timeEntries) {
     if (!latestEntry || new Date(entry.startedAt).getTime() > new Date(latestEntry.startedAt).getTime()) {
       latestEntry = entry;
     }
+    if (
+      options.viewerId &&
+      entry.userId === options.viewerId &&
+      (!myLatestEntry || new Date(entry.startedAt).getTime() > new Date(myLatestEntry.startedAt).getTime())
+    ) {
+      myLatestEntry = entry;
+    }
 
     if (entry.status === "RUNNING") {
-      runningEntry = entry;
+      runningEntries.push(entry);
       const startedTime = new Date(entry.startedAt).getTime();
       const currentSessionElapsed = Math.max(0, Math.floor((now - startedTime) / 1000));
       if (!options.approvedOnly) totalDurationSeconds += currentSessionElapsed;
@@ -151,31 +162,34 @@ export function computeProjectTimerMetrics(project: {
     }
   }
 
-  let timerStatus: "IDLE" | "RUNNING" | "PAUSED" | "COMPLETED" = "IDLE";
-  if (project.status === "COMPLETED") {
-    timerStatus = "COMPLETED";
-  } else if (runningEntry) {
-    timerStatus = "RUNNING";
-  } else if (latestEntry && latestEntry.status === "PAUSED") {
-    timerStatus = "PAUSED";
-  }
+  const statusOf = (running: boolean, latest: typeof latestEntry): TimerStatus => {
+    if (project.status === "COMPLETED") return "COMPLETED";
+    if (running) return "RUNNING";
+    if (latest && latest.status === "PAUSED") return "PAUSED";
+    return "IDLE";
+  };
 
-  const activeTimer = runningEntry
-    ? {
-        id: runningEntry.id,
-        startedAt: new Date(runningEntry.startedAt),
-        elapsedSeconds: Math.max(0, Math.floor((now - new Date(runningEntry.startedAt).getTime()) / 1000)),
-        userId: runningEntry.userId ?? null,
-        userName: runningEntry.user?.name ?? null,
-        taskDescription: runningEntry.taskDescription || runningEntry.notes || null,
-        taskId: runningEntry.taskId ?? null,
-      }
-    : null;
+  const timerStatus = statusOf(runningEntries.length > 0, latestEntry);
+  const myTimerStatus = statusOf(myLatestEntry?.status === "RUNNING", myLatestEntry);
+
+  const activeTimers: ActiveTimerInfo[] = runningEntries
+    .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
+    .map((entry) => ({
+      id: entry.id,
+      startedAt: new Date(entry.startedAt),
+      elapsedSeconds: Math.max(0, Math.floor((now - new Date(entry.startedAt).getTime()) / 1000)),
+      userId: entry.userId ?? null,
+      userName: entry.user?.name ?? null,
+      taskDescription: entry.taskDescription || entry.notes || null,
+      taskId: entry.taskId ?? null,
+    }));
 
   return {
     totalDurationSeconds,
-    activeTimer,
+    activeTimer: activeTimers[0] ?? null,
+    activeTimers,
     timerStatus,
+    myTimerStatus,
   };
 }
 
@@ -192,7 +206,10 @@ function withClientAwareMetrics<
   P extends { status: ProjectStatus; timeEntries: Array<{ id: string; startedAt: Date; endedAt: Date | null; durationSeconds: number; status: TimeEntryStatus; approvedAt: Date | null }> },
 >(project: P, user?: SessionUser) {
   const timeEntries = visibleTimeEntries(project.timeEntries, user);
-  const metrics = computeProjectTimerMetrics({ ...project, timeEntries }, { approvedOnly: user?.role === "CLIENT" });
+  const metrics = computeProjectTimerMetrics(
+    { ...project, timeEntries },
+    { approvedOnly: user?.role === "CLIENT", viewerId: user?.id }
+  );
   return { ...project, timeEntries, ...metrics };
 }
 
@@ -1040,18 +1057,7 @@ export async function startProjectTimer(
       });
     }
 
-    // Only one person's timer runs on a project at a time.
-    const otherRunning = await tx.projectTimeEntry.findFirst({
-      where: {
-        projectId,
-        status: "RUNNING",
-        ...(userId ? { userId: { not: userId } } : {}),
-      },
-    });
-    if (otherRunning) {
-      throw new Error("This project already has an active timer.");
-    }
-
+    // Several people may run timers on the same project; each user still runs only one at a time.
     const id = createId();
     const finalDescription = taskDescription?.trim() || "Working on project";
 
@@ -1122,9 +1128,11 @@ export async function pauseProjectTimer(projectId: string, userId?: string, opti
     projectName = project.name;
     customerId = project.customerId;
 
+    // Pause is owner-only: it acts on the caller's own running timer on this project.
     const runningEntry = await tx.projectTimeEntry.findFirst({
       where: {
         projectId,
+        userId: userId ?? null,
         status: "RUNNING",
       },
       orderBy: { startedAt: "desc" },
@@ -1139,11 +1147,11 @@ export async function pauseProjectTimer(projectId: string, userId?: string, opti
           })
         : null;
       if (paused) return paused;
+      const othersRunning = await tx.projectTimeEntry.count({ where: { projectId, status: "RUNNING" } });
+      if (othersRunning > 0) {
+        throw new Error("You can only control your own timer.");
+      }
       throw new Error("No active running timer found for this project.");
-    }
-
-    if (runningEntry.userId !== userId) {
-      throw new Error("You can only control your own timer.");
     }
 
     const end = effectiveTime(options.at, runningEntry.startedAt);
@@ -1222,17 +1230,6 @@ export async function resumeProjectTimer(projectId: string, userId?: string, opt
       }
     }
 
-    const existingRunning = await tx.projectTimeEntry.findFirst({
-      where: {
-        projectId,
-        status: "RUNNING",
-      },
-    });
-
-    if (existingRunning) {
-      throw new Error("This project already has an active timer.");
-    }
-
     // Only your own paused segment can be resumed; it carries the task and session forward.
     const paused = await tx.projectTimeEntry.findFirst({
       where: { projectId, userId: userId ?? null, status: "PAUSED" },
@@ -1288,11 +1285,16 @@ export async function resumeProjectTimer(projectId: string, userId?: string, opt
   return resumedEntry;
 }
 
+/**
+ * Stops a timer on the project. By default the caller's own; an admin may pass `forUserId` to stop
+ * someone else's. Without `forUserId`, an admin who has no timer here stops the one other running
+ * timer, if there is exactly one.
+ */
 export async function stopProjectTimer(
   projectId: string,
   userId?: string,
   taskDescription?: string,
-  options: TimerOpOptions = {}
+  options: TimerOpOptions & { forUserId?: string } = {}
 ) {
   let projectName = "";
   let customerId: string | null = null;
@@ -1313,29 +1315,47 @@ export async function stopProjectTimer(
     projectName = project.name;
     customerId = project.customerId;
 
-    const runningEntry = await tx.projectTimeEntry.findFirst({
-      where: {
-        projectId,
-        status: "RUNNING",
-      },
+    // Whose session is being stopped: the caller's, or (admin override) someone else's.
+    let ownerId = options.forUserId ?? userId ?? null;
+
+    const callerIsAdmin = async () => {
+      if (!userId) return false;
+      const caller = await tx.user.findUnique({ where: { id: userId }, select: { role: true } });
+      return caller?.role === "ADMIN";
+    };
+
+    if (options.forUserId && options.forUserId !== userId && !(await callerIsAdmin())) {
+      throw new Error("You can only control your own timer.");
+    }
+
+    let runningEntry = await tx.projectTimeEntry.findFirst({
+      where: { projectId, userId: ownerId, status: "RUNNING" },
       orderBy: { startedAt: "desc" },
     });
 
-    // Whose session is being stopped: the caller's, or (admin override) the runner's.
-    let ownerId = userId ?? null;
-
-    if (runningEntry) {
-      if (runningEntry.userId && userId && runningEntry.userId !== userId) {
-        const caller = await tx.user.findUnique({
-          where: { id: userId },
-          select: { role: true },
-        });
-        if (caller?.role !== "ADMIN") {
+    if (!runningEntry && !options.forUserId) {
+      const others = await tx.projectTimeEntry.findMany({
+        where: { projectId, status: "RUNNING", userId: { not: null } },
+        orderBy: { startedAt: "desc" },
+        take: 2,
+      });
+      // With no own paused session to close, a stop aimed at someone else's timer needs admin rights.
+      const ownPaused = await tx.projectTimeEntry.count({
+        where: { projectId, userId: ownerId, status: "PAUSED" },
+      });
+      if (others.length > 0 && ownPaused === 0) {
+        if (!(await callerIsAdmin())) {
           throw new Error("You can only control your own timer.");
         }
+        if (others.length > 1) {
+          throw new Error("Several people have timers running on this project. Choose whose timer to stop on the project's Timer tab.");
+        }
+        runningEntry = others[0];
         ownerId = runningEntry.userId;
       }
+    }
 
+    if (runningEntry) {
       const end = effectiveTime(options.at, runningEntry.startedAt);
       elapsed = secondsBetween(runningEntry.startedAt, end);
       stoppedEntryId = runningEntry.id;
@@ -1720,18 +1740,18 @@ export async function getProjectTimerStatus(projectId: string, user: SessionUser
   const metrics = computeProjectTimerMetrics({
     ...project,
     timeEntries: visibleTimeEntries(project.timeEntries, user),
-  }, { approvedOnly: user.role === "CLIENT" });
+  }, { approvedOnly: user.role === "CLIENT", viewerId: user.id });
 
   // Clients see that someone is working, not who or on what.
-  const activeTimer =
-    metrics.activeTimer && user.role === "CLIENT"
-      ? { id: metrics.activeTimer.id, startedAt: metrics.activeTimer.startedAt, elapsedSeconds: metrics.activeTimer.elapsedSeconds }
-      : metrics.activeTimer;
+  const forViewer = (t: ActiveTimerInfo) =>
+    user.role === "CLIENT" ? { id: t.id, startedAt: t.startedAt, elapsedSeconds: t.elapsedSeconds } : t;
 
   return {
     projectId,
     status: metrics.timerStatus,
-    activeTimer,
+    myStatus: metrics.myTimerStatus,
+    activeTimer: metrics.activeTimer ? forViewer(metrics.activeTimer) : null,
+    activeTimers: metrics.activeTimers.map(forViewer),
     totalDurationSeconds: metrics.totalDurationSeconds,
     serverTime: new Date().toISOString(),
   };

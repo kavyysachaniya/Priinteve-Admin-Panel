@@ -195,7 +195,7 @@ The check runs before the action's `try` block, so a denied action **throws** (t
 | `/api/projects` | GET | `projects:view` | 401 / 403 / 400 |
 | `/api/projects` | POST | `projects:create` | 400 with Zod details on invalid body |
 | `/api/projects/[id]` | GET / PUT / DELETE | `projects:view` / `projects:edit` / `projects:delete` | 404 if not found (GET) |
-| `/api/projects/[id]/timer/start`, `.../resume` | POST | `projects:timer`; the service requires assignment (Admins always). Resume also requires the caller's **own** paused segment | **409** if the project or user already has a running timer |
+| `/api/projects/[id]/timer/start`, `.../resume` | POST | `projects:timer`; the service requires assignment (Admins always). Resume also requires the caller's **own** paused segment | **409** if the user already has a running timer |
 | `/api/projects/[id]/timer/pause`, `.../stop` | POST | `projects:timer` | **403** if the running timer belongs to someone else. Stop only closes the owner's paused segments |
 | `/api/projects/[id]/timer/status` | GET | `projects:view` and project access (`canAccessProject`) | 404 for a project the caller can't see; clients get no name or task |
 | `/api/projects/[id]/time-entries` | GET | `projects:view` | Clients receive approved entries only |
@@ -226,9 +226,10 @@ Services (`lib/services/*`) assume the caller has already been authorized. They 
 
 Implemented in `lib/services/projects.ts`; details in [PROJECTS.md](./PROJECTS.md#timer-ownership).
 
-- **Pause** and **stop** compare the running entry's `userId` with the caller and throw "You can only control your own timer." if they differ.
-- **Admin override for stop only:** an Admin may stop another user's running timer (from the project list, the project's timer card or its Timer tab). Pause has no override.
-- **Start** and **resume** always create a new entry owned by the caller. They are refused if the project already has a running entry, or if the caller has a running entry on any project.
+- Several people can run timers on the same project at once; each user still has at most one running timer overall.
+- **Pause** and **stop** act on the caller's own timer on the project. Trying to control someone else's throws "You can only control your own timer."
+- **Admin override for stop only:** an Admin may stop another user's running timer from the project's Timer tab, which sends that user's id (`userId` in the body of `POST /api/projects/[id]/timer/stop`). Pause has no override.
+- **Start** and **resume** always create a new entry owned by the caller. They are refused if the caller has a running entry on any project (the UI's start first stops it). Other people's running timers on the same project don't block them.
 - **Stop** also marks every `PAUSED` entry on the project as `COMPLETED`, whoever created it.
 - Setting a project's status to `COMPLETED` (edit form, `projects:edit`) closes all running and paused entries, whoever owns them.
 

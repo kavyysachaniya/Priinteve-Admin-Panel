@@ -59,7 +59,7 @@ Services live in `lib/services/`, actions in `lib/actions/`, and module componen
 - **Routes:** `/projects`, `/projects/new`, `/projects/[id]`, `/projects/[id]/edit`, plus `/api/projects/**`.
 - **Components:** `components/projects/*`.
 - **Models:** `Project`, `ProjectTimeEntry`.
-- **Rules:** owner-only timer control, one running timer per project and per user. Full details: [PROJECTS.md](./PROJECTS.md).
+- **Rules:** owner-only timer control (Admins can stop anyone's), one running timer per user; several people can run timers on the same project. Full details: [PROJECTS.md](./PROJECTS.md).
 
 ## Customers
 
