@@ -6,109 +6,92 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'"
     />
-    <title>Priinteve Companion</title>
-    <link rel="stylesheet" href="styles.css" />
-    <script src="renderer.js" defer></script>
+    <title>Priinteve Time Tracker</title>
+    <link rel="stylesheet" href="app.css" />
+    <script src="app.js" defer></script>
   </head>
   <body>
-    <main id="stage" class="stage" data-mood="neutral">
-      <section id="bubble" class="bubble hit" aria-live="polite">
-        <header class="bubble-head">
-          <h1 id="greeting">Good morning!</h1>
-          <p id="summary" class="summary">Getting your briefing…</p>
-          <p id="offline" class="offline" hidden></p>
-          <div id="update" class="update" hidden>
-            <p id="update-text" class="update-text"></p>
-            <div id="update-bar" class="update-bar" hidden><div id="update-fill" class="update-fill"></div></div>
-            <div id="update-actions" class="update-actions">
-              <button id="btn-install" class="btn primary small" type="button">Install now</button>
-              <button id="btn-later" class="btn small" type="button">Later</button>
-            </div>
-          </div>
-        </header>
-        <div id="sections" class="sections"></div>
-        <footer class="actions">
-          <button id="btn-ok" class="btn primary" type="button">Got it</button>
-          <button id="btn-remind" class="btn" type="button">Remind me in 30 min</button>
-          <button id="btn-stop" class="btn" type="button" hidden>Stop for today</button>
-          <button id="btn-refresh" class="btn icon" type="button" title="Refresh" aria-label="Refresh">⟳</button>
-        </footer>
-        <p id="meta" class="meta"></p>
+    <header class="topbar">
+      <nav class="tabs" role="tablist">
+        <button id="tab-timer" class="tab" role="tab" type="button" aria-selected="true">Timer</button>
+        <button id="tab-today" class="tab" role="tab" type="button" aria-selected="false">Today</button>
+      </nav>
+      <span id="sync" class="sync" data-state="pending" title="">Connecting…</span>
+      <button id="btn-settings" class="icon-btn" type="button" title="Settings" aria-label="Settings">⚙</button>
+    </header>
+
+    <section id="banner" class="banner" hidden aria-live="assertive"></section>
+
+    <section id="update" class="update" hidden>
+      <p id="update-text"></p>
+      <div id="update-bar" class="bar" hidden><div id="update-fill" class="bar-fill"></div></div>
+      <div id="update-actions" class="row-actions">
+        <button id="btn-install" class="btn primary small" type="button">Install now</button>
+        <button id="btn-later" class="btn small" type="button">Later</button>
+      </div>
+    </section>
+
+    <main id="panel-timer" class="panel" role="tabpanel">
+      <section class="clock-card" id="clock-card" data-status="IDLE">
+        <p id="clock-status" class="clock-status">Not tracking</p>
+        <p id="clock" class="clock" aria-live="off">00:00:00</p>
+        <p id="clock-project" class="clock-project">Pick a project and task below to start.</p>
+        <p id="clock-task" class="clock-task"></p>
+        <p id="clock-meta" class="clock-meta"></p>
+        <div class="clock-actions">
+          <button id="btn-pause" class="btn" type="button" hidden>Pause</button>
+          <button id="btn-resume" class="btn primary" type="button" hidden>Resume</button>
+          <button id="btn-stop" class="btn danger" type="button" hidden>Stop</button>
+        </div>
+        <p id="action-note" class="note" hidden></p>
       </section>
 
-      <div id="mascot" class="mascot hit" role="img" aria-label="Companion mascot">
-        <div class="mascot-bob">
-          <svg viewBox="0 0 130 150" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <defs>
-              <linearGradient id="ink" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0" stop-color="#60a5fa" />
-                <stop offset="1" stop-color="#1d4ed8" />
-              </linearGradient>
-            </defs>
-
-            <!-- waving arm (behind the body) -->
-            <g id="arm" class="arm">
-              <ellipse cx="111" cy="94" rx="8" ry="15" fill="url(#ink)" transform="rotate(-28 111 94)" />
-            </g>
-            <ellipse cx="19" cy="104" rx="7" ry="12" fill="#2563eb" transform="rotate(20 19 104)" />
-
-            <!-- ink-drop body -->
-            <path
-              d="M62 6 C62 6 18 60 18 94 A44 44 0 0 0 106 94 C106 60 62 6 62 6 Z"
-              fill="url(#ink)"
-            />
-            <ellipse cx="44" cy="62" rx="7" ry="13" fill="#ffffff" opacity="0.35" transform="rotate(25 44 62)" />
-
-            <!-- eyes -->
-            <g class="eyes">
-              <g class="eye">
-                <ellipse cx="48" cy="84" rx="10" ry="11" fill="#ffffff" />
-                <circle class="pupil" cx="50" cy="86" r="5" fill="#0f172a" />
-                <circle cx="52" cy="83" r="1.8" fill="#ffffff" />
-              </g>
-              <g class="eye">
-                <ellipse cx="76" cy="84" rx="10" ry="11" fill="#ffffff" />
-                <circle class="pupil" cx="78" cy="86" r="5" fill="#0f172a" />
-                <circle cx="80" cy="83" r="1.8" fill="#ffffff" />
-              </g>
-            </g>
-
-            <!-- worried brows -->
-            <g class="brows" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round">
-              <path d="M40 70 L54 65" />
-              <path d="M84 70 L70 65" />
-            </g>
-
-            <!-- cheeks -->
-            <ellipse cx="36" cy="101" rx="7" ry="4" fill="#f9a8d4" opacity="0.85" />
-            <ellipse cx="88" cy="101" rx="7" ry="4" fill="#f9a8d4" opacity="0.85" />
-
-            <!-- mouths: one visible per mood -->
-            <g fill="none" stroke="#0f172a" stroke-width="2.6" stroke-linecap="round">
-              <path class="mouth mouth-happy" d="M54 102 Q62 111 70 102" />
-              <path class="mouth mouth-neutral" d="M55 104 Q62 108 69 104" />
-              <path class="mouth mouth-worried" d="M54 108 Q62 101 70 108" />
-            </g>
-
-            <!-- CMY dots: the printing nod -->
-            <circle cx="52" cy="122" r="3.6" fill="#06b6d4" />
-            <circle cx="62" cy="125" r="3.6" fill="#ec4899" />
-            <circle cx="72" cy="122" r="3.6" fill="#facc15" />
-
-            <!-- mood extras -->
-            <path
-              class="sweat"
-              d="M101 52 C101 52 95 60 95 64 A6 6 0 0 0 107 64 C107 60 101 52 101 52 Z"
-              fill="#bae6fd"
-            />
-            <path
-              class="sparkle"
-              d="M108 22 L111 30 L119 33 L111 36 L108 44 L105 36 L97 33 L105 30 Z"
-              fill="#facc15"
-            />
-          </svg>
+      <section class="start-card">
+        <h2 id="start-heading">Start a timer</h2>
+        <label class="field">
+          <span>Project</span>
+          <select id="pick-project"></select>
+        </label>
+        <label class="field">
+          <span>Task</span>
+          <select id="pick-task"></select>
+        </label>
+        <label class="field" id="new-task-field" hidden>
+          <span>New task title</span>
+          <input id="new-task" type="text" maxlength="200" placeholder="What are you working on?" />
+        </label>
+        <div id="switch-confirm" class="confirm" hidden>
+          <p>Stop the current timer and start this task?</p>
+          <div class="row-actions">
+            <button id="btn-switch-yes" class="btn primary small" type="button">Stop &amp; start</button>
+            <button id="btn-switch-no" class="btn small" type="button">Cancel</button>
+          </div>
         </div>
-      </div>
+        <button id="btn-start" class="btn primary wide" type="button">Start timer</button>
+        <p id="start-empty" class="hint" hidden>No projects are available to you yet. Ask an admin to assign you to one.</p>
+      </section>
+
+      <section id="notices" class="notices" hidden></section>
+
+      <footer class="links">
+        <button class="link" type="button" data-page="timesheet">Time history &amp; reports</button>
+        <button class="link" type="button" data-page="tasks">All tasks</button>
+      </footer>
+    </main>
+
+    <main id="panel-today" class="panel" role="tabpanel" hidden>
+      <header class="today-head">
+        <div>
+          <h1 id="greeting">Today</h1>
+          <p id="summary" class="hint">Loading your briefing…</p>
+          <p id="offline" class="note warn" hidden></p>
+        </div>
+        <button id="btn-refresh" class="icon-btn" type="button" title="Refresh" aria-label="Refresh">⟳</button>
+      </header>
+      <div id="sections" class="sections"></div>
+      <footer class="links">
+        <button id="btn-stop-today" class="link" type="button" hidden>No more check-ins today</button>
+      </footer>
     </main>
   </body>
 </html>

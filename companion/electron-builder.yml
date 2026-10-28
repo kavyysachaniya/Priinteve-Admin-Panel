@@ -11,6 +11,10 @@ files:
   - package.json
   - "!**/*.map"
 
+# koffi (Windows shutdown-block reason) loads a native .node file, which can't run from inside the asar.
+asarUnpack:
+  - node_modules/koffi/**
+
 win:
   target:
     - target: nsis

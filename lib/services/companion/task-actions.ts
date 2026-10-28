@@ -42,7 +42,7 @@ export async function runCompanionTaskAction(
     if (!roleHasPermission(user.role, "projects:timer")) throw new Error("You can't track time.");
     if (!task.projectId) throw new Error("This task has no project, so there's nothing to track time against.");
     if (task.status === "COMPLETED" || task.status === "CANCELLED") throw new Error("This task is already closed.");
-    const entry = await startProjectTimer(task.projectId, user.id, task.title, task.id, { autoStopPrevious: true });
+    const entry = await startProjectTimer(task.projectId, user.id, task.title, task.id, { autoStopPrevious: true, source: "DESKTOP" });
     return {
       message: entry.autoStoppedProjectName
         ? `Timer started. Your timer on "${entry.autoStoppedProjectName}" was stopped.`

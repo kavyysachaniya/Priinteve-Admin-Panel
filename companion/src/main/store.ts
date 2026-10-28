@@ -101,13 +101,9 @@ interface StateFile {
   remindersPaused: boolean;
   /** Epoch ms before which the update prompt isn't shown again ("Later"). */
   updateSnoozeUntil: number;
-  /** Mascot size chosen from the tray menu. */
-  mascotSize: "small" | "medium" | "large";
-  /** Where the person dragged the (open) window to. */
+  /** Where the person moved the window to. */
   windowPos: { x: number; y: number };
 }
-
-export type MascotSize = StateFile["mascotSize"];
 
 function readState(): Partial<StateFile> {
   return readJson<StateFile>("state.json");
@@ -154,15 +150,6 @@ export function areRemindersPaused(): boolean {
 
 export function setRemindersPaused(paused: boolean): void {
   patchState({ remindersPaused: paused });
-}
-
-export function getMascotSize(): MascotSize {
-  const size = readState().mascotSize;
-  return size === "small" || size === "large" ? size : "medium";
-}
-
-export function setMascotSize(size: MascotSize): void {
-  patchState({ mascotSize: size });
 }
 
 export function getWindowPos(): { x: number; y: number } | null {
