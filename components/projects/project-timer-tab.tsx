@@ -214,11 +214,11 @@ export function ProjectTimerTab({
     }
   };
 
-  // Stop timer
+  // Stop this project's running timer (an admin can stop someone else's)
   const handleStopTimer = async () => {
     setIsSubmitting(true);
     try {
-      const res = await fetch("/api/timer/stop", {
+      const res = await fetch(`/api/projects/${projectId}/timer/stop`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

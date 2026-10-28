@@ -55,6 +55,15 @@ body {
   min-height: 100vh;
 }
 
+/* No visible scrollbar; the window still scrolls with the wheel, touchpad and keyboard. */
+html {
+  scrollbar-width: none;
+}
+
+::-webkit-scrollbar {
+  display: none;
+}
+
 h1,
 h2,
 p {

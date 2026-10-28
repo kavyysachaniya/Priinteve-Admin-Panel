@@ -226,7 +226,8 @@ Services (`lib/services/*`) assume the caller has already been authorized. They 
 
 Implemented in `lib/services/projects.ts`; details in [PROJECTS.md](./PROJECTS.md#timer-ownership).
 
-- **Pause** and **stop** compare the running entry's `userId` with the caller and throw "You can only control your own timer." if they differ. There is no admin override.
+- **Pause** and **stop** compare the running entry's `userId` with the caller and throw "You can only control your own timer." if they differ.
+- **Admin override for stop only:** an Admin may stop another user's running timer (from the project list, the project's timer card or its Timer tab). Pause has no override.
 - **Start** and **resume** always create a new entry owned by the caller. They are refused if the project already has a running entry, or if the caller has a running entry on any project.
 - **Stop** also marks every `PAUSED` entry on the project as `COMPLETED`, whoever created it.
 - Setting a project's status to `COMPLETED` (edit form, `projects:edit`) closes all running and paused entries, whoever owns them.

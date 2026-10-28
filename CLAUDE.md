@@ -34,7 +34,7 @@ Internal admin panel for Priinteve (printing, design, digital services): sales (
 - The permission map lives in `lib/auth/permissions.ts` (`ADMIN` = all, `EMPLOYEE` = subset). Check permissions with `requireAuth` / `requirePermission` from `lib/auth/session.ts`; they throw `AuthenticationError` / `AuthorizationError`.
 - API routes wrap handlers in `try` and return `toApiErrorResponse(err)` (`lib/auth/api.ts`): 401 / 403 / 400.
 - `proxy.ts` only verifies the JWT. Every page, action and API handler must still check permissions on the server. Hiding UI is never the protection.
-- Project timers are **owner-only**: only the user who started a running entry can pause or stop it, with no admin override (`lib/services/projects.ts`).
+- Project timers are **owner-only**: only the user who started a running entry can pause or stop it. The one exception: an Admin can stop (not pause) anyone's timer (`lib/services/projects.ts`).
 - The `jwt` callback in `auth.ts` re-reads role and status every 60 s; deactivated users lose access without logging out.
 - Full matrix: `docs/AUTHORIZATION.md`.
 
