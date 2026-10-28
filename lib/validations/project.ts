@@ -2,6 +2,12 @@ import { z } from "zod";
 
 export const projectFormSchema = z.object({
   name: z.string().min(1, "Project name is required").max(200, "Project name cannot exceed 200 characters"),
+  code: z
+    .string()
+    .trim()
+    .max(20, "Project code cannot exceed 20 characters")
+    .regex(/^[A-Za-z0-9._-]*$/, "Use letters, numbers, dots, dashes or underscores only")
+    .optional(),
   description: z.string().min(1, "Project description is required"),
   status: z.enum(["NOT_STARTED", "IN_PROGRESS", "ON_HOLD", "COMPLETED", "CANCELLED"]).default("NOT_STARTED"),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]).default("MEDIUM"),
@@ -18,6 +24,7 @@ export type ProjectFormValues = z.infer<typeof projectFormSchema>;
 export function projectFormDefaults(overrides?: Partial<ProjectFormValues>): ProjectFormValues {
   return {
     name: "",
+    code: "",
     description: "",
     status: "NOT_STARTED",
     priority: "MEDIUM",
@@ -47,10 +54,19 @@ export const stopTimerSchema = z.object({
 });
 export type StopTimerValues = z.infer<typeof stopTimerSchema>;
 
+const correctionReason = z
+  .string()
+  .trim()
+  .min(3, "Say briefly why this time is being corrected (min 3 characters).")
+  .max(500, "Keep the reason under 500 characters.");
+
+// Duration is always derived from the start and end times, and an end time can't be removed.
 export const timeEntryUpdateSchema = z.object({
   taskDescription: z.string().min(3, "Task description must be at least 3 characters").optional(),
-  durationSeconds: z.number().int().min(0).optional(),
   startedAt: z.string().optional(),
-  endedAt: z.string().optional().nullable(),
+  endedAt: z.string().optional(),
+  reason: correctionReason,
 });
 export type TimeEntryUpdateValues = z.infer<typeof timeEntryUpdateSchema>;
+
+export const timeEntryDeleteSchema = z.object({ reason: correctionReason });

@@ -29,6 +29,7 @@ import {
 } from "@/lib/actions/projects";
 import { formatDuration, formatTimerClock, formatDate } from "@/lib/time-format";
 import { toast } from "sonner";
+import { notifyTimerChanged } from "@/lib/timer-events";
 import type { ProjectListItem } from "@/lib/services/projects";
 
 function ProjectTimerControls({
@@ -49,6 +50,7 @@ function ProjectTimerControls({
       const res = await startProjectTimerAction(project.id);
       if (res.success) {
         toast.success(res.message);
+        notifyTimerChanged();
         onActionComplete();
       } else {
         toast.error(res.message);
@@ -67,6 +69,7 @@ function ProjectTimerControls({
       const res = await pauseProjectTimerAction(project.id);
       if (res.success) {
         toast.success(res.message);
+        notifyTimerChanged();
         onActionComplete();
       } else {
         toast.error(res.message);
@@ -85,6 +88,7 @@ function ProjectTimerControls({
       const res = await resumeProjectTimerAction(project.id);
       if (res.success) {
         toast.success(res.message);
+        notifyTimerChanged();
         onActionComplete();
       } else {
         toast.error(res.message);
@@ -103,6 +107,7 @@ function ProjectTimerControls({
       const res = await stopProjectTimerAction(project.id);
       if (res.success) {
         toast.success(res.message);
+        notifyTimerChanged();
         onActionComplete();
       } else {
         toast.error(res.message);

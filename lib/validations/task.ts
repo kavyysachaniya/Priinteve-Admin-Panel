@@ -18,6 +18,11 @@ export const taskFormSchema = z.object({
   productionJobId: z.string().optional().default(""),
   tags: z.string().optional().default(""),
   reminder: z.string().optional().default(""),
+  /** Planned effort in minutes; blank for none. */
+  estimatedMinutes: z
+    .string()
+    .regex(/^\d{0,5}$/, "Planned time must be a whole number of minutes")
+    .optional(),
 });
 
 export type TaskFormValues = z.infer<typeof taskFormSchema>;
@@ -41,6 +46,7 @@ export function taskFormDefaults(overrides?: Partial<TaskFormValues>): TaskFormV
     productionJobId: "",
     tags: "",
     reminder: "",
+    estimatedMinutes: "",
     ...overrides,
   };
 }

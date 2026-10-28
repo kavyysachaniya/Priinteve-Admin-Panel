@@ -1,9 +1,8 @@
-// Types for the API exposed by src/preload.ts, plus the briefing contract
-// (mirrors src/shared/briefing.ts; renderer scripts are plain scripts without imports).
+// Types for the API exposed by src/preload.ts, plus the contracts the window renders
+// (mirror src/shared/briefing.ts and src/shared/timer.ts; renderer scripts are plain scripts without imports).
 
 type ItemStatus = "ok" | "warn" | "error" | "todo";
 type Mood = "happy" | "neutral" | "worried";
-
 type ItemAction = "complete" | "start-timer" | "stop-timer";
 
 interface BriefingItem {
@@ -14,11 +13,6 @@ interface BriefingItem {
   taskId?: string;
   actions?: ItemAction[];
   running?: boolean;
-}
-
-interface LiveView {
-  timer: { taskId: string | null; projectName: string; taskTitle: string | null; startedAt: string } | null;
-  tasks: Record<string, "TODO" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED">;
 }
 
 interface BriefingSection {
@@ -40,11 +34,43 @@ interface Briefing {
   offlineNote?: string;
 }
 
-type BriefingState =
-  | { kind: "enter" }
-  | { kind: "leave" }
-  | { kind: "loading"; attempt: number; total: number }
-  | { kind: "briefing"; briefing: Briefing; source: "live" | "cache" | "fallback" | "sample"; mode?: "briefing" | "reminder" | "update" };
+type TodayState =
+  | { kind: "loading" }
+  | { kind: "briefing"; briefing: Briefing; source: "live" | "cache" | "fallback" | "sample"; mode: "briefing" | "reminder" };
+
+interface PickerProject {
+  id: string;
+  name: string;
+  code: string | null;
+  tasks: Array<{ id: string; title: string; status: string }>;
+}
+
+type SyncState = "synced" | "pending" | "offline" | "signed-out" | "unpaired";
+
+interface TimerView {
+  status: "IDLE" | "RUNNING" | "PAUSED";
+  projectId: string | null;
+  projectName: string | null;
+  taskId: string | null;
+  taskTitle: string | null;
+  sessionStartedAtMs: number | null;
+  segmentStartedAtMs: number | null;
+  closedSeconds: number;
+  clockOffsetMs: number;
+  unconfirmed: boolean;
+  sync: SyncState;
+  pendingOps: number;
+  lastSyncedAt: string | null;
+  projects: PickerProject[];
+  canCreateTasks: boolean;
+  notices: Array<{ id: string; message: string }>;
+}
+
+type Banner =
+  | { kind: "shutdown"; phase: "ask" }
+  | { kind: "shutdown"; phase: "done"; synced: boolean; message: string }
+  | { kind: "quit" }
+  | { kind: "recovery"; projectName: string; taskTitle: string | null; startedAt: string; lastConfirmedAt: string; detectedAt: string };
 
 interface UpdateViewState {
   phase: "available" | "downloading" | "installing" | "error";
@@ -58,28 +84,31 @@ interface SettingsResult {
   message: string;
 }
 
+type TimerActionInput =
+  | { type: "START"; projectId: string; taskId?: string; newTaskTitle?: string }
+  | { type: "PAUSE" }
+  | { type: "RESUME" }
+  | { type: "STOP" };
+
 interface CompanionBridge {
-  onState(callback: (state: BriefingState) => void): () => void;
   ready(): void;
-  dismiss(): void;
-  remindLater(): void;
-  refresh(): void;
-  openUrl(url: string): void;
-  showMenu(): void;
-  dockChanged(docked: boolean): void;
-  dragStart(): void;
-  dragMove(dx: number, dy: number): void;
-  dragEnd(): void;
-  onUi(callback: (state: { size: "small" | "medium" | "large" }) => void): () => void;
-  stopToday(): void;
+  onTimer(callback: (view: TimerView) => void): () => void;
+  onBanner(callback: (banner: Banner | null) => void): () => void;
+  onToday(callback: (state: TodayState) => void): () => void;
+  onTab(callback: (tab: "timer" | "today") => void): () => void;
   onUpdate(callback: (state: UpdateViewState | null) => void): () => void;
+  timerAction(input: TimerActionInput): Promise<SettingsResult>;
+  refreshTimer(): void;
+  dismissNotice(id: string): void;
+  chooseBanner(kind: Banner["kind"], choice: string): Promise<SettingsResult>;
+  refreshToday(): void;
+  stopToday(): void;
+  taskAction(action: ItemAction, taskId: string): Promise<SettingsResult>;
+  openUrl(url: string): void;
+  openPanelPage(page: "timesheet" | "tasks" | "timer"): void;
+  openSettings(): void;
   installUpdate(): void;
   laterUpdate(): void;
-  setInteractive(interactive: boolean): void;
-  taskAction(action: ItemAction, taskId: string): Promise<SettingsResult>;
-  watchTasks(ids: string[]): void;
-  onLive(callback: (state: LiveView) => void): () => void;
-  reportHits(rects: Array<{ x: number; y: number; w: number; h: number }>): void;
   getSettings(): Promise<{ serverUrl: string; hasToken: boolean } | null>;
   saveSettings(input: { serverUrl: string; token: string }): Promise<SettingsResult>;
   testConnection(input: { serverUrl: string; token: string }): Promise<SettingsResult>;

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import * as projectService from "@/lib/services/projects";
 import { requirePermission } from "@/lib/auth/session";
 import { toApiErrorResponse } from "@/lib/auth/api";
-import { timeEntryUpdateSchema } from "@/lib/validations/project";
+import { timeEntryDeleteSchema, timeEntryUpdateSchema } from "@/lib/validations/project";
 
 export const dynamic = "force-dynamic";
 
@@ -31,14 +31,23 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await requirePermission("projects:timer");
     const { id } = await params;
 
-    await projectService.deleteTimeEntry(id, user);
+    const body = await request.json().catch(() => ({}));
+    const parsed = timeEntryDeleteSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? "Validation error" },
+        { status: 400 }
+      );
+    }
+
+    await projectService.deleteTimeEntry(id, user, parsed.data.reason);
     return NextResponse.json({ success: true, message: "Time entry deleted successfully." });
   } catch (err) {
     return toApiErrorResponse(err);

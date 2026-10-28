@@ -1,46 +1,36 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 
-// The only bridge between the sandboxed pages and the main process.
+// The only bridge between the sandboxed pages and the main process. The main process checks
+// which window every message came from and validates every payload.
+
+function subscribe(channel: string) {
+  return (callback: (state: unknown) => void) => {
+    const listener = (_event: IpcRendererEvent, state: unknown) => callback(state);
+    ipcRenderer.on(channel, listener);
+    return () => ipcRenderer.removeListener(channel, listener);
+  };
+}
 
 contextBridge.exposeInMainWorld("companion", {
-  // Briefing window
-  onState: (callback: (state: unknown) => void) => {
-    const listener = (_event: IpcRendererEvent, state: unknown) => callback(state);
-    ipcRenderer.on("briefing:state", listener);
-    return () => ipcRenderer.removeListener("briefing:state", listener);
-  },
-  ready: () => ipcRenderer.send("briefing:ready"),
-  dismiss: () => ipcRenderer.send("briefing:dismiss"),
-  remindLater: () => ipcRenderer.send("briefing:remind"),
-  refresh: () => ipcRenderer.send("briefing:refresh"),
+  // App window
+  ready: () => ipcRenderer.send("app:ready"),
+  onTimer: subscribe("timer:view"),
+  onBanner: subscribe("app:banner"),
+  onToday: subscribe("today:state"),
+  onTab: subscribe("app:tab"),
+  onUpdate: subscribe("update:state"),
+  timerAction: (input: unknown) => ipcRenderer.invoke("timer:act", input),
+  refreshTimer: () => ipcRenderer.send("timer:refresh"),
+  dismissNotice: (id: string) => ipcRenderer.send("notice:dismiss", id),
+  chooseBanner: (kind: string, choice: string) => ipcRenderer.invoke("banner:choose", { kind, choice }),
+  refreshToday: () => ipcRenderer.send("today:refresh"),
+  stopToday: () => ipcRenderer.send("today:stop-reminders"),
+  taskAction: (action: string, taskId: string) => ipcRenderer.invoke("task:action", { action, taskId }),
   openUrl: (url: string) => ipcRenderer.send("open-url", url),
-  showMenu: () => ipcRenderer.send("briefing:menu"),
-  dragStart: () => ipcRenderer.send("briefing:drag-start"),
-  dragMove: (dx: number, dy: number) => ipcRenderer.send("briefing:drag-move", dx, dy),
-  dragEnd: () => ipcRenderer.send("briefing:drag-end"),
-  onUi: (callback: (state: unknown) => void) => {
-    const listener = (_event: IpcRendererEvent, state: unknown) => callback(state);
-    ipcRenderer.on("ui:state", listener);
-    return () => ipcRenderer.removeListener("ui:state", listener);
-  },
-  dockChanged: (docked: boolean) => ipcRenderer.send("briefing:docked", docked),
-  stopToday: () => ipcRenderer.send("briefing:stop-today"),
-  onUpdate: (callback: (state: unknown) => void) => {
-    const listener = (_event: IpcRendererEvent, state: unknown) => callback(state);
-    ipcRenderer.on("update:state", listener);
-    return () => ipcRenderer.removeListener("update:state", listener);
-  },
+  openPanelPage: (page: string) => ipcRenderer.send("app:open-panel", page),
+  openSettings: () => ipcRenderer.send("app:open-settings"),
   installUpdate: () => ipcRenderer.send("update:install"),
   laterUpdate: () => ipcRenderer.send("update:later"),
-  reportHits: (rects: Array<{ x: number; y: number; w: number; h: number }>) => ipcRenderer.send("briefing:hit-rects", rects),
-  watchTasks: (ids: string[]) => ipcRenderer.send("briefing:watch-tasks", ids),
-  onLive: (callback: (state: unknown) => void) => {
-    const listener = (_event: IpcRendererEvent, state: unknown) => callback(state);
-    ipcRenderer.on("live:state", listener);
-    return () => ipcRenderer.removeListener("live:state", listener);
-  },
-  taskAction: (action: string, taskId: string) => ipcRenderer.invoke("task:action", { action, taskId }),
-  setInteractive: (interactive: boolean) => ipcRenderer.send("briefing:interactive", interactive),
 
   // Settings window
   getSettings: () => ipcRenderer.invoke("settings:get"),

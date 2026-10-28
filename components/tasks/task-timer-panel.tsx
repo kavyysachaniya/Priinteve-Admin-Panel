@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Clock, Play, Square } from "lucide-react";
 import { toast } from "sonner";
+import { notifyTimerChanged } from "@/lib/timer-events";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -80,6 +81,7 @@ export function TaskTimerPanel({
       }
       const stopped = typeof data.autoStoppedProjectName === "string" ? data.autoStoppedProjectName : null;
       toast.success(stopped ? `Timer started. Your timer on "${stopped}" was stopped.` : "Timer started");
+      notifyTimerChanged();
       router.refresh();
     } finally {
       setBusy(false);
@@ -95,6 +97,7 @@ export function TaskTimerPanel({
         return;
       }
       toast.success("Timer stopped");
+      notifyTimerChanged();
       router.refresh();
     } finally {
       setBusy(false);

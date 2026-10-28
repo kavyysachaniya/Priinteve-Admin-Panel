@@ -41,6 +41,7 @@ export default async function EditProjectPage({
 
   const defaultValues = {
     name: project.name,
+    code: project.code ?? "",
     description: project.description ?? "",
     status: project.status,
     priority: project.priority,

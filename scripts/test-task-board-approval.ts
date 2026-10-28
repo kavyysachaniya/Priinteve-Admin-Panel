@@ -119,7 +119,7 @@ async function run() {
   const dto = toClientProjectDto(afterProject as never);
   assert(dto.totalDurationSeconds === 600 && dto.recentTimeEntries.length === 1, "client DTO shows approved time");
 
-  await projectService.updateTimeEntry(entry.id, { taskDescription: "Edited by admin" } as never, admin);
+  await projectService.updateTimeEntry(entry.id, { taskDescription: "Edited by admin", reason: "Clarify description" }, admin);
   const edited = await prisma.projectTimeEntry.findUniqueOrThrow({ where: { id: entry.id } });
   assert(edited.approvedAt === null, "editing an entry clears approval");
 

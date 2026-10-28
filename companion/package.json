@@ -1,8 +1,8 @@
 {
   "name": "priinteve-companion",
   "productName": "Priinteve Companion",
-  "version": "0.0.3",
-  "description": "Morning briefing mascot for the Priinteve Business OS",
+  "version": "0.1.0",
+  "description": "Desktop time tracker and daily briefing for the Priinteve Business OS",
   "private": true,
   "main": "dist/main/main.js",
   "author": "Priinteve",
@@ -11,6 +11,7 @@
     "start": "npm run build && electron .",
     "sample": "npm run build && electron . --sample",
     "icon": "node scripts/make-icon.mjs",
+    "test": "npm run build && node scripts/test-timer.mjs",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
     "dist": "npm run build && electron-builder --win --config electron-builder.yml"
   },
@@ -18,5 +19,8 @@
     "electron": "^44.5.1",
     "electron-builder": "^26.15.3",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "koffi": "^2.16.3"
   }
 }

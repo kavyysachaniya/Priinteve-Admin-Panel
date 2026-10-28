@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { notifyTimerChanged } from "@/lib/timer-events";
 import { AtSign, CalendarClock, FolderKanban, Loader2, MoreHorizontal, Play, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -135,6 +136,7 @@ export function TaskCardView({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Could not start timer");
       toast.success("Timer started");
+      notifyTimerChanged();
       router.refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not start timer");
@@ -150,6 +152,7 @@ export function TaskCardView({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Could not stop timer");
       toast.success("Timer stopped");
+      notifyTimerChanged();
       router.refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not stop timer");

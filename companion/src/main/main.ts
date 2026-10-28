@@ -4,28 +4,28 @@ import {
   ipcMain,
   Menu,
   nativeImage,
-  screen,
+  Notification,
+  powerMonitor,
   Tray,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
 } from "electron";
 import path from "node:path";
 import { compareVersions, type Briefing, type UpdateInfo } from "../shared/briefing";
+import { formatClock, workedSeconds } from "../shared/timer";
 import { BOOT_RETRY_DELAYS, QUICK_RETRY_DELAYS, getBriefing, testConnection } from "./api";
 import { startReminders } from "./reminders";
-import { fetchLive, fetchReminder, fetchUpdateInfo, postTaskAction } from "./server";
+import { fetchReminder, fetchTimerState, fetchUpdateInfo, postTaskAction, postTimerOps } from "./server";
+import { attachShutdownGuard, BLOCK_REASON, setShutdownBlockReason } from "./shutdown";
+import { TimerController, type ActionInput, type Interruption } from "./timer";
 import { downloadUpdate, launchInstaller } from "./updater";
 import { describeError, log } from "./log";
 import {
   areRemindersPaused,
   getConnection,
-  getMascotSize,
-  getWindowPos,
-  setMascotSize,
-  setWindowPos,
-  type MascotSize,
   getServerUrl,
   getUpdateSnoozeUntil,
+  getWindowPos,
   hasToken,
   isAutostartInitialized,
   markAutostartInitialized,
@@ -33,25 +33,22 @@ import {
   markShownToday,
   saveConnection,
   setRemindersPaused,
+  setWindowPos,
   snoozeUpdatePrompt,
   stopRemindersToday,
   wasChecksShownToday,
 } from "./store";
-import {
-  BRIEFING_HEIGHT,
-  DOCKED_HEIGHT,
-  clampOpenPosition,
-  createBriefingWindow,
-  createSetupWindow,
-  defaultOpenPosition,
-  dockedBounds,
-  openExternalSafely,
-} from "./windows";
+import { createMainWindow, createSetupWindow, openExternalSafely } from "./windows";
+
+// Priinteve Time Tracker (the desktop companion). One normal window with two tabs: Timer and
+// Today (the morning briefing). It lives in the tray; closing the window hides it. Reminders and
+// update offers arrive as Windows notifications. While a timer is open the app refuses Windows
+// shutdown/restart until the person stops it (see shutdown.ts).
 
 const AUTOSTART_ARG = "--autostart";
-const BOOT_DELAY_MS = 6_000;
-const REMIND_AFTER_MS = 30 * 60 * 1000;
 const TOKEN_PATTERN = /^pcd_[A-Za-z0-9]{10,40}_[A-Za-z0-9_-]{30,80}$/;
+const ID_PATTERN = /^[A-Za-z0-9_-]{1,40}$/;
+const SHUTDOWN_FLUSH_MS = 5_000;
 
 // Prefilled in the setup window so a new user only has to paste their device token.
 const DEFAULT_SERVER_URL = process.env.COMPANION_DEFAULT_SERVER_URL || "https://priinteve-admin-panel.vercel.app";
@@ -59,111 +56,47 @@ const DEFAULT_SERVER_URL = process.env.COMPANION_DEFAULT_SERVER_URL || "https://
 const launchedAtLogin = process.argv.includes(AUTOSTART_ARG);
 const useSample = process.argv.includes("--sample");
 
+type Tab = "timer" | "today";
+
+type Banner =
+  | { kind: "shutdown"; phase: "ask" }
+  | { kind: "shutdown"; phase: "done"; synced: boolean; message: string }
+  | { kind: "quit" }
+  | {
+      kind: "recovery";
+      projectName: string;
+      taskTitle: string | null;
+      startedAt: string;
+      lastConfirmedAt: string;
+      detectedAt: string;
+    };
+
+type TodayState =
+  | { kind: "loading" }
+  | { kind: "briefing"; briefing: Briefing; source: string; mode: "briefing" | "reminder" };
+
+type UpdateViewState = { phase: "available" | "downloading" | "installing" | "error"; version: string; percent?: number; message?: string };
+
 let tray: Tray | null = null;
-let briefingWin: BrowserWindow | null = null;
+let mainWin: BrowserWindow | null = null;
 let setupWin: BrowserWindow | null = null;
-let lastState: unknown = null;
-let fetching = false;
-let remindTimer: NodeJS.Timeout | null = null;
-/** What the window is currently showing, so a reminder never covers a briefing the person is reading. */
-let windowMode: "briefing" | "reminder" | "update" = "briefing";
-let briefingDocked = false;
-/** True while the briefing on screen is the day's first (it carries the checks), so Refresh keeps them. */
+let timer: TimerController | null = null;
+let banner: Banner | null = null;
+let today: TodayState | null = null;
+let currentTab: Tab = "timer";
+let fetchingToday = false;
 let dailyBriefingOpen = false;
-
-// Live updates while the bubble is open: the renderer says which tasks are on screen, and we ask
-// the panel every 20 s (and right after an action) for the running timer and those tasks' status.
-const LIVE_INTERVAL_MS = 20_000;
-let watchedTaskIds: string[] = [];
-let livePolling = false;
-let liveTimer: NodeJS.Timeout | null = null;
-
-async function pollLive(): Promise<void> {
-  if (livePolling || useSample || !getConnection()) return;
-  if (!briefingVisible() || briefingDocked) return;
-  livePolling = true;
-  try {
-    const live = await fetchLive(watchedTaskIds);
-    if (live && briefingWin && !briefingWin.isDestroyed()) briefingWin.webContents.send("live:state", live);
-  } catch (err) {
-    log("warn", `Live update failed: ${describeError(err)}`);
-  } finally {
-    livePolling = false;
-  }
-}
-
-function startLivePolling(): void {
-  if (liveTimer) return;
-  liveTimer = setInterval(() => void pollLive(), LIVE_INTERVAL_MS);
-}
-/** Where the open window was before it was minimised, so it can return there. */
-let openBounds: { x: number; y: number } | null = null;
-let dragOrigin: { x: number; y: number } | null = null;
-
-/** Minimise: shrink to a strip on the right screen edge. Open: grow back to where it was. */
-function applyDock(docked: boolean): void {
-  if (docked === briefingDocked) return;
-  briefingDocked = docked;
-  if (docked) dailyBriefingOpen = false;
-  const win = briefingWin;
-  if (!win || win.isDestroyed()) return;
-  const b = win.getBounds();
-  if (docked) {
-    openBounds = { x: b.x, y: b.y };
-    // Keep the mascot where it is vertically: the window shrinks upwards from its bottom edge.
-    win.setBounds(dockedBounds(b.y + b.height));
-  } else {
-    const back = clampOpenPosition(openBounds?.x ?? defaultOpenPosition().x, b.y + b.height - BRIEFING_HEIGHT);
-    win.setBounds({ x: back.x, y: back.y, width: b.width, height: BRIEFING_HEIGHT });
-    setWindowPos(back);
-  }
-}
-
-function sendUiState(): void {
-  if (briefingWin && !briefingWin.isDestroyed()) briefingWin.webContents.send("ui:state", { size: getMascotSize() });
-}
-
-function chooseSize(size: MascotSize): void {
-  setMascotSize(size);
-  sendUiState();
-}
-
-// Click-through handling. The briefing window is a big transparent rectangle; it should only
-// catch the mouse over the mascot and the bubble. The renderer reports those rectangles and we
-// compare them with the cursor position a few times a second, which is more dependable than
-// relying on the page to see mouse-move events through a click-through window.
-type HitRect = { x: number; y: number; w: number; h: number };
-let hitRects: HitRect[] = [];
-let windowInteractive = false;
-let hitTimer: NodeJS.Timeout | null = null;
-const HIT_PADDING = 6;
-
-function startHitTesting(): void {
-  if (hitTimer) return;
-  hitTimer = setInterval(() => {
-    const win = briefingWin;
-    if (!win || win.isDestroyed() || !win.isVisible()) return;
-    const cursor = screen.getCursorScreenPoint();
-    const bounds = win.getBounds();
-    const x = cursor.x - bounds.x;
-    const y = cursor.y - bounds.y;
-    const inside = hitRects.some(
-      (r) => x >= r.x - HIT_PADDING && x <= r.x + r.w + HIT_PADDING && y >= r.y - HIT_PADDING && y <= r.y + r.h + HIT_PADDING,
-    );
-    if (inside !== windowInteractive) {
-      windowInteractive = inside;
-      win.setIgnoreMouseEvents(!inside, { forward: true });
-    }
-  }, 40);
-}
+/** Set once the app is really going to exit (Quit after the timer check, or an update install). */
+let quitting = false;
+let shutdownGuard: { release: () => void } | null = null;
+let trayTicker: NodeJS.Timeout | null = null;
+let hintedTray = false;
 
 const UPDATE_FIRST_CHECK_MS = 60_000;
 const UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const UPDATE_SNOOZE_MS = 6 * 60 * 60 * 1000;
 // Auto-update only runs in the installed app (the dev build would try to replace itself).
 const updatesEnabled = () => app.isPackaged || process.env.COMPANION_CHECK_UPDATES === "1";
-
-type UpdateViewState = { phase: "available" | "downloading" | "installing" | "error"; version: string; percent?: number; message?: string };
 let pendingUpdate: UpdateInfo | null = null;
 let updateState: UpdateViewState | null = null;
 let installing = false;
@@ -175,7 +108,7 @@ process.on("unhandledRejection", (err) => log("error", `Unhandled rejection: ${d
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on("second-instance", () => void showBriefing(QUICK_RETRY_DELAYS));
+  app.on("second-instance", () => showWindow());
   app.setAppUserModelId("com.priinteve.companion");
   app.whenReady().then(onReady).catch((err) => log("error", `Startup failed: ${describeError(err)}`));
 }
@@ -183,38 +116,59 @@ if (!app.requestSingleInstanceLock()) {
 // Tray app: closing windows must not quit.
 app.on("window-all-closed", () => undefined);
 
+// Quitting from anywhere (tray, taskbar, Alt+F4 on the last window) goes through the timer check.
+app.on("before-quit", (event) => {
+  if (quitting) return;
+  if (timer?.isActive()) {
+    event.preventDefault();
+    requestQuit();
+    return;
+  }
+  quitting = true;
+});
+
 async function onReady(): Promise<void> {
   initAutostart();
+
+  timer = new TimerController({ dataDir: app.getPath("userData"), fetchState: fetchTimerState, postOps: postTimerOps });
+  timer.onChange(onTimerChanged);
+  timer.onInterruption(onInterruption);
+
   createTray();
   registerIpc();
-  screen.on("display-metrics-changed", () => {
-    if (briefingWin && !briefingWin.isDestroyed()) {
-      const b = briefingWin.getBounds();
-      if (briefingDocked) briefingWin.setBounds(dockedBounds(b.y + b.height));
-      else {
-        const p = clampOpenPosition(b.x, b.y);
-        briefingWin.setPosition(p.x, p.y);
-      }
-    }
-  });
+  ensureWindow();
+
+  // After sleep or a lock the monotonic clock may have paused: re-anchor and ask the server.
+  const onWake = (event: string) => () => {
+    log("info", `Power event: ${event}`);
+    timer?.reanchor();
+    void timer?.flush();
+  };
+  powerMonitor.on("resume", onWake("resume"));
+  powerMonitor.on("unlock-screen", onWake("unlock-screen"));
 
   if (!useSample) {
+    timer.start();
     const testTick = app.isPackaged ? undefined : Number(process.env.COMPANION_REMINDER_TEST_MS) || undefined;
-    startLivePolling();
-    startReminders({ fetchReminder, show: (briefing) => void showReminder(briefing) }, testTick);
+    startReminders({ fetchReminder, show: (briefing) => showReminder(briefing) }, testTick);
     scheduleUpdateChecks();
   }
 
   if (!useSample && !getConnection()) {
-    // Fresh install: there is nothing to brief on until the computer is paired, so start with setup.
+    // Fresh install: nothing to track or brief on until the computer is paired, so start with setup.
     log("info", "Not paired yet; opening settings");
     openSetup();
-  } else if (launchedAtLogin) {
-    // Give the desktop and network a moment after sign-in, then show the briefing. It appears on
-    // every start; only the websites, Slack and email checks are limited to once a day.
-    setTimeout(() => void showBriefing(BOOT_RETRY_DELAYS), BOOT_DELAY_MS);
+    return;
+  }
+
+  if (launchedAtLogin) {
+    // Signed in to Windows: stay in the tray, prepare the briefing and offer it as a notification.
+    // An open timer still shows the window, so a running clock is never hidden.
+    if (timer.isActive()) showWindow("timer");
+    void loadToday(BOOT_RETRY_DELAYS, false, true);
   } else {
-    void showBriefing(BOOT_RETRY_DELAYS);
+    showWindow("timer");
+    void loadToday(BOOT_RETRY_DELAYS);
   }
 }
 
@@ -240,6 +194,128 @@ function initAutostart(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Window
+// ---------------------------------------------------------------------------
+
+function ensureWindow(): BrowserWindow {
+  if (mainWin && !mainWin.isDestroyed()) return mainWin;
+  const win = createMainWindow(getWindowPos());
+  mainWin = win;
+  win.on("close", (event) => {
+    if (quitting) return;
+    // Closing hides to the tray; the timer keeps going on the server either way.
+    event.preventDefault();
+    win.hide();
+    if (!hintedTray && timer?.isActive()) {
+      hintedTray = true;
+      notify("Timer still running", "Priinteve is in the tray. Stop the timer from there or reopen this window.", () => showWindow("timer"));
+    }
+  });
+  win.on("moved", () => {
+    const b = win.getBounds();
+    setWindowPos({ x: b.x, y: b.y });
+  });
+  win.on("closed", () => {
+    if (mainWin === win) mainWin = null;
+  });
+  // This window lives for the whole run, so it is the one that answers Windows' shutdown query.
+  shutdownGuard = attachShutdownGuard(win, {
+    isActive: () => timer?.isActive() ?? false,
+    prompt: () => {
+      setBanner({ kind: "shutdown", phase: "ask" });
+      showWindow("timer", true);
+    },
+    ended: () => log("info", "Windows is ending the session; the timer journal is already on disk"),
+  });
+  onTimerChanged();
+  return win;
+}
+
+function showWindow(tab?: Tab, focus = true): void {
+  const win = ensureWindow();
+  if (tab) setTab(tab);
+  const reveal = () => {
+    if (win.isMinimized()) win.restore();
+    win.show();
+    if (focus) win.focus();
+  };
+  if (win.webContents.isLoading()) win.webContents.once("did-finish-load", reveal);
+  else reveal();
+}
+
+function send(channel: string, payload: unknown): void {
+  if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send(channel, payload);
+}
+
+function setTab(tab: Tab): void {
+  currentTab = tab;
+  send("app:tab", tab);
+}
+
+function setBanner(next: Banner | null): void {
+  banner = next;
+  send("app:banner", banner);
+}
+
+function notify(title: string, body: string, onClick: () => void): void {
+  if (!Notification.isSupported()) return;
+  const n = new Notification({ title, body, silent: false });
+  n.on("click", onClick);
+  n.show();
+}
+
+// ---------------------------------------------------------------------------
+// Timer
+// ---------------------------------------------------------------------------
+
+function onTimerChanged(): void {
+  if (!timer) return;
+  const view = timer.view();
+  send("timer:view", view);
+
+  // Windows shows this text on its "apps preventing shutdown" screen while a timer is open.
+  if (mainWin && !mainWin.isDestroyed()) setShutdownBlockReason(mainWin, view.status === "IDLE" ? null : BLOCK_REASON);
+
+  if (view.status === "IDLE" && banner?.kind === "quit") setBanner(null);
+  updateTray();
+  if (view.status === "RUNNING" && !trayTicker) trayTicker = setInterval(updateTray, 1000);
+  if (view.status !== "RUNNING" && trayTicker) {
+    clearInterval(trayTicker);
+    trayTicker = null;
+  }
+}
+
+function onInterruption(i: Interruption): void {
+  setBanner({
+    kind: "recovery",
+    projectName: i.projectName,
+    taskTitle: i.taskTitle,
+    startedAt: i.startedAt,
+    lastConfirmedAt: i.lastConfirmedAt,
+    detectedAt: i.detectedAt,
+  });
+  showWindow("timer");
+  notify("Check your timer", "Your timer kept running while this PC was off or asleep. Choose what to record.", () =>
+    showWindow("timer"),
+  );
+}
+
+async function stopTimer(reason: "USER" | "SHUTDOWN"): Promise<{ ok: boolean; message: string }> {
+  if (!timer) return { ok: false, message: "The timer isn't ready yet." };
+  return timer.act({ type: "STOP", stopReason: reason });
+}
+
+function requestQuit(): void {
+  if (timer?.isActive()) {
+    setBanner({ kind: "quit" });
+    showWindow("timer");
+    return;
+  }
+  quitting = true;
+  app.quit();
+}
+
+// ---------------------------------------------------------------------------
 // Tray
 // ---------------------------------------------------------------------------
 
@@ -247,16 +323,40 @@ function createTray(): void {
   const icon = nativeImage.createFromPath(path.join(__dirname, "..", "assets", "tray.png"));
   if (icon.isEmpty()) log("error", "Tray icon image could not be loaded");
   tray = new Tray(icon);
-  tray.setToolTip("Priinteve Companion");
+  tray.on("click", () => showWindow());
   // Open the menu ourselves instead of relying on setContextMenu, so right-click behaves the same everywhere.
-  tray.on("click", toggleBriefing);
   tray.on("right-click", () => tray?.popUpContextMenu(buildMenu()));
+  updateTray();
   log("info", "Tray icon created");
 }
 
+/** One line for the tray: the same view the window shows, never a separate counter. */
+function trayStatus(): string {
+  if (!timer) return "Timer not ready";
+  const view = timer.view();
+  if (view.status === "IDLE") return "No timer running";
+  const elapsed = formatClock(workedSeconds(view, timer.serverNow()));
+  const what = [view.projectName, view.taskTitle].filter(Boolean).join(" · ");
+  return `${view.status === "PAUSED" ? "Paused" : "Running"} ${elapsed} · ${what}`;
+}
+
+function updateTray(): void {
+  // Windows limits tray tooltips to 127 characters.
+  tray?.setToolTip(`Priinteve Time Tracker\n${trayStatus()}`.slice(0, 127));
+}
+
 function buildMenu(): Menu {
+  const active = timer?.isActive() ?? false;
   return Menu.buildFromTemplate([
-    { label: "Show briefing now", click: () => void showBriefing(QUICK_RETRY_DELAYS) },
+    { label: trayStatus(), enabled: false },
+    { type: "separator" },
+    { label: "Open time tracker", click: () => showWindow("timer") },
+    {
+      label: "Stop timer",
+      enabled: active,
+      click: () => void stopTimer("USER").then((r) => !r.ok && notify("Timer", r.message, () => showWindow("timer"))),
+    },
+    { label: "Today's briefing", click: () => showWindow("today") },
     { label: "Open settings", click: openSetup },
     { type: "separator" },
     {
@@ -268,149 +368,67 @@ function buildMenu(): Menu {
       click: (item) => setAutostart(item.checked),
     },
     {
-      label: "Mascot size",
-      submenu: (["small", "medium", "large"] as const).map((size) => ({
-        label: size[0].toUpperCase() + size.slice(1),
-        type: "radio" as const,
-        checked: getMascotSize() === size,
-        click: () => chooseSize(size),
-      })),
-    },
-    {
       label: "Project reminders (every 30 min)",
       type: "checkbox",
       checked: !areRemindersPaused(),
       click: (item) => setRemindersPaused(!item.checked),
     },
     { type: "separator" },
-    { label: "Quit", click: () => app.quit() },
+    { label: "Quit", click: requestQuit },
   ]);
 }
 
 // ---------------------------------------------------------------------------
-// Briefing window
+// Today (briefing) and reminders
 // ---------------------------------------------------------------------------
 
-function sendState(state: unknown): void {
-  lastState = state;
-  if (briefingWin && !briefingWin.isDestroyed()) briefingWin.webContents.send("briefing:state", state);
+function setToday(state: TodayState): void {
+  today = state;
+  send("today:state", state);
 }
 
-function ensureBriefingWindow(): BrowserWindow {
-  if (!briefingWin || briefingWin.isDestroyed()) {
-    briefingWin = createBriefingWindow(getWindowPos());
-    windowInteractive = false;
-    startHitTesting();
-    briefingWin.on("closed", () => {
-      briefingWin = null;
-    });
-  }
-  return briefingWin;
-}
-
-async function showBriefing(delays: number[], fresh = false): Promise<void> {
-  if (!useSample && !getConnection()) {
-    openSetup();
-    return;
-  }
-  if (remindTimer) {
-    clearTimeout(remindTimer);
-    remindTimer = null;
-  }
-  windowMode = "briefing";
+async function loadToday(delays: number[], fresh = false, announce = false): Promise<void> {
+  if (fetchingToday) return;
+  fetchingToday = true;
   try {
-    const win = ensureBriefingWindow();
-    if (win.webContents.isLoading()) {
-      await new Promise<void>((resolve) => win.webContents.once("did-finish-load", () => resolve()));
-    }
-    if (!win.isVisible()) win.showInactive();
-    sendState({ kind: "enter" });
-  } catch (err) {
-    log("error", `Could not open the briefing window: ${describeError(err)}`);
-    return;
-  }
-
-  if (fetching) return;
-  fetching = true;
-  try {
-    sendState({ kind: "loading", attempt: 0, total: delays.length });
+    if (!today || today.kind !== "briefing") setToday({ kind: "loading" });
     const daily = !wasChecksShownToday() || dailyBriefingOpen;
-    const result = await getBriefing(
-      delays,
-      (attempt, total) => sendState({ kind: "loading", attempt, total }),
-      useSample,
-      fresh,
-      daily,
-    );
-    sendState({ kind: "briefing", briefing: result.briefing, source: result.source, mode: "briefing" });
+    const result = await getBriefing(delays, undefined, useSample, fresh, daily);
+    setToday({ kind: "briefing", briefing: result.briefing, source: result.source, mode: "briefing" });
     markShownToday();
     // Only a real, live answer counts as "the checks were shown"; an offline copy doesn't.
     if (daily && result.source === "live") {
       markChecksShownToday();
       dailyBriefingOpen = true;
     }
+    if (announce) {
+      notify(result.briefing.greeting || "Good morning", result.briefing.summary || "Your briefing is ready.", () =>
+        showWindow("today"),
+      );
+    }
   } catch (err) {
     // getBriefing never throws, but keep the window usable regardless.
-    log("error", `Showing briefing failed: ${describeError(err)}`);
+    log("error", `Loading the briefing failed: ${describeError(err)}`);
   } finally {
-    fetching = false;
+    fetchingToday = false;
   }
 }
 
-function briefingVisible(): boolean {
-  return !!briefingWin && !briefingWin.isDestroyed() && briefingWin.isVisible();
+/** The 30-minute project check-in: a notification that opens the Today tab. */
+function showReminder(briefing: Briefing): void {
+  setToday({ kind: "briefing", briefing, source: "live", mode: "reminder" });
+  notify(briefing.greeting || "Project check-in", briefing.summary || "Here's where your projects stand.", () =>
+    showWindow("today"),
+  );
 }
 
-/** Opens the window (without stealing focus) and waits until the page has loaded. */
-async function openWindow(): Promise<boolean> {
-  try {
-    const win = ensureBriefingWindow();
-    if (win.webContents.isLoading()) {
-      await new Promise<void>((resolve) => win.webContents.once("did-finish-load", () => resolve()));
-    }
-    if (!win.isVisible()) win.showInactive();
-    sendState({ kind: "enter" });
-    return true;
-  } catch (err) {
-    log("error", `Could not open the briefing window: ${describeError(err)}`);
-    return false;
-  }
-}
-
-/** The 30-minute project check-in. Skipped while a morning briefing is open. */
-async function showReminder(briefing: Briefing): Promise<void> {
-  // Don't cover a briefing the person has open and is reading (a docked one doesn't count).
-  if (briefingVisible() && !briefingDocked && windowMode === "briefing") return;
-  if (!(await openWindow())) return;
-  windowMode = "reminder";
-  sendState({ kind: "briefing", briefing, source: "live", mode: "reminder" });
-  if (updateState) sendUpdate(updateState);
-}
+// ---------------------------------------------------------------------------
+// Updates
+// ---------------------------------------------------------------------------
 
 function sendUpdate(state: UpdateViewState | null): void {
   updateState = state;
-  if (briefingWin && !briefingWin.isDestroyed()) briefingWin.webContents.send("update:state", state);
-}
-
-/** Shows a small "update available" bubble when the window isn't already open. */
-async function showUpdatePrompt(info: UpdateInfo): Promise<void> {
-  if (!(await openWindow())) return;
-  windowMode = "update";
-  sendState({
-    kind: "briefing",
-    mode: "update",
-    source: "live",
-    briefing: {
-      generatedAt: new Date().toISOString(),
-      mascotName: "Inky",
-      ownerName: "",
-      greeting: "Update available",
-      summary: `Version ${info.version} of the Companion is ready to install.`,
-      mood: "happy",
-      sections: [],
-    },
-  });
-  sendUpdate({ phase: "available", version: info.version });
+  send("update:state", state);
 }
 
 function scheduleUpdateChecks(): void {
@@ -429,12 +447,17 @@ async function runUpdateCheck(): Promise<void> {
   pendingUpdate = info;
   if (Date.now() < getUpdateSnoozeUntil()) return;
   log("info", `Update ${info.version} is available (running ${current})`);
-  if (briefingVisible()) sendUpdate({ phase: "available", version: info.version });
-  else await showUpdatePrompt(info);
+  sendUpdate({ phase: "available", version: info.version });
+  notify("Update available", `Version ${info.version} of the time tracker is ready to install.`, () => showWindow());
 }
 
 async function installUpdate(): Promise<void> {
   if (!pendingUpdate || installing || !updatesEnabled()) return;
+  // The installer closes this app; an open timer must be stopped first, like a shutdown.
+  if (timer?.isActive()) {
+    sendUpdate({ phase: "error", version: pendingUpdate.version, message: "Stop your timer before installing the update." });
+    return;
+  }
   installing = true;
   try {
     // The signed link in the original answer lasts 10 minutes; ask again for a fresh one.
@@ -443,10 +466,12 @@ async function installUpdate(): Promise<void> {
     pendingUpdate = info;
     sendUpdate({ phase: "downloading", version: info.version, percent: 0 });
     const file = await downloadUpdate(info, (percent) => sendUpdate({ phase: "downloading", version: info.version, percent }));
+    if (timer?.isActive()) throw new Error("A timer was started during the download. Stop it, then install again.");
     sendUpdate({ phase: "installing", version: info.version });
     log("info", `Installing update ${info.version}`);
     launchInstaller(file);
     // The installer replaces this app's files and starts the new version when it finishes.
+    quitting = true;
     setTimeout(() => app.exit(0), 800);
   } catch (err) {
     installing = false;
@@ -459,19 +484,9 @@ async function installUpdate(): Promise<void> {
   }
 }
 
-/** Tray click: slide the briefing away if it's showing, otherwise show it. */
-function toggleBriefing(): void {
-  if (briefingWin && !briefingWin.isDestroyed() && briefingWin.isVisible()) {
-    // Not stored in lastState: the renderer plays its exit animation, then asks us to hide.
-    briefingWin.webContents.send("briefing:state", { kind: "leave" });
-    return;
-  }
-  void showBriefing(QUICK_RETRY_DELAYS);
-}
-
-function hideBriefing(): void {
-  if (briefingWin && !briefingWin.isDestroyed()) briefingWin.hide();
-}
+// ---------------------------------------------------------------------------
+// Settings window
+// ---------------------------------------------------------------------------
 
 function openSetup(): void {
   if (setupWin && !setupWin.isDestroyed()) {
@@ -482,18 +497,6 @@ function openSetup(): void {
   setupWin.on("closed", () => {
     setupWin = null;
   });
-}
-
-// ---------------------------------------------------------------------------
-// IPC
-// ---------------------------------------------------------------------------
-
-function fromBriefing(event: IpcMainEvent): boolean {
-  return !!briefingWin && !briefingWin.isDestroyed() && event.sender === briefingWin.webContents;
-}
-
-function fromSetup(event: IpcMainEvent | IpcMainInvokeEvent): boolean {
-  return !!setupWin && !setupWin.isDestroyed() && event.sender === setupWin.webContents;
 }
 
 function normaliseServerUrl(raw: unknown): string {
@@ -521,105 +524,178 @@ function readTokenInput(raw: unknown, required: boolean): string | null {
   return token;
 }
 
+// ---------------------------------------------------------------------------
+// IPC
+// ---------------------------------------------------------------------------
+
+function fromMain(event: IpcMainEvent | IpcMainInvokeEvent): boolean {
+  return !!mainWin && !mainWin.isDestroyed() && event.sender === mainWin.webContents;
+}
+
+function fromSetup(event: IpcMainEvent | IpcMainInvokeEvent): boolean {
+  return !!setupWin && !setupWin.isDestroyed() && event.sender === setupWin.webContents;
+}
+
+/** Validates what the window asks the timer to do; anything unexpected is refused. */
+function readAction(input: unknown): ActionInput | null {
+  if (!input || typeof input !== "object") return null;
+  const r = input as Record<string, unknown>;
+  switch (r.type) {
+    case "START": {
+      if (typeof r.projectId !== "string" || !ID_PATTERN.test(r.projectId)) return null;
+      const taskId = typeof r.taskId === "string" && ID_PATTERN.test(r.taskId) ? r.taskId : undefined;
+      const title = typeof r.newTaskTitle === "string" ? r.newTaskTitle.trim().slice(0, 200) : "";
+      if (!taskId && title.length < 2) return null;
+      return { type: "START", projectId: r.projectId, taskId, newTaskTitle: taskId ? undefined : title };
+    }
+    case "PAUSE":
+      return { type: "PAUSE" };
+    case "RESUME":
+      return { type: "RESUME" };
+    case "STOP":
+      return { type: "STOP", stopReason: "USER" };
+    default:
+      return null;
+  }
+}
+
+async function chooseBanner(kind: unknown, choice: unknown): Promise<{ ok: boolean; message: string }> {
+  if (!banner || banner.kind !== kind || !timer) return { ok: false, message: "That prompt has already closed." };
+
+  if (banner.kind === "shutdown") {
+    if (choice === "return" || choice === "close") {
+      setBanner(null);
+      shutdownGuard?.release();
+      return { ok: true, message: "" };
+    }
+    if (choice === "stop" && banner.phase === "ask") {
+      const result = await stopTimer("SHUTDOWN");
+      if (!result.ok) return result; // nothing was saved: say so and keep blocking
+      const synced = await timer.flushWithin(SHUTDOWN_FLUSH_MS);
+      shutdownGuard?.release();
+      const message = synced
+        ? "Timer stopped and saved. You can shut down or restart now."
+        : "Timer stopped and saved on this PC; it will sync the next time you're online. You can shut down or restart now.";
+      setBanner({ kind: "shutdown", phase: "done", synced, message });
+      return { ok: true, message };
+    }
+  }
+
+  if (banner.kind === "quit") {
+    if (choice === "cancel") {
+      setBanner(null);
+      return { ok: true, message: "" };
+    }
+    if (choice === "stop-quit") {
+      const result = await stopTimer("USER");
+      if (!result.ok) return result;
+      await timer.flushWithin(SHUTDOWN_FLUSH_MS);
+      setBanner(null);
+      quitting = true;
+      app.quit();
+      return result;
+    }
+  }
+
+  if (banner.kind === "recovery") {
+    const current = timer.currentInterruption();
+    if (!current) {
+      setBanner(null);
+      return { ok: true, message: "" };
+    }
+    let result: { ok: boolean; message: string } = { ok: true, message: "Kept the timer running." };
+    if (choice === "stop-last") {
+      result = await timer.act({
+        type: "STOP",
+        stopReason: "RECOVERY",
+        at: current.lastConfirmedAt,
+        note: "Stopped at the last confirmed activity after an interruption",
+      });
+    } else if (choice === "stop-now") {
+      result = await stopTimer("USER");
+    } else if (choice !== "keep") {
+      return { ok: false, message: "Unknown choice." };
+    }
+    if (result.ok) {
+      timer.dismissInterruption(current.key);
+      setBanner(null);
+    }
+    return result;
+  }
+
+  return { ok: false, message: "Unknown choice." };
+}
+
+const PANEL_PAGES: Record<string, string> = { timesheet: "/timesheet", tasks: "/tasks", timer: "/timer" };
+
 function registerIpc(): void {
-  ipcMain.on("briefing:ready", (event) => {
-    if (!fromBriefing(event)) return;
-    sendUiState();
-    if (lastState) event.sender.send("briefing:state", lastState);
-    if (updateState) event.sender.send("update:state", updateState);
+  ipcMain.on("app:ready", (event) => {
+    if (!fromMain(event)) return;
+    event.sender.send("app:tab", currentTab);
+    if (timer) event.sender.send("timer:view", timer.view());
+    event.sender.send("app:banner", banner);
+    if (today) event.sender.send("today:state", today);
+    event.sender.send("update:state", updateState);
   });
-  ipcMain.on("briefing:stop-today", (event) => {
-    if (!fromBriefing(event)) return;
+  ipcMain.handle("timer:act", async (event, input: unknown) => {
+    if (!fromMain(event) || !timer) return { ok: false, message: "Not allowed." };
+    const action = readAction(input);
+    if (!action) return { ok: false, message: "That timer action isn't valid." };
+    return timer.act(action);
+  });
+  ipcMain.on("timer:refresh", (event) => {
+    if (fromMain(event)) void timer?.flush();
+  });
+  ipcMain.on("notice:dismiss", (event, id: unknown) => {
+    if (fromMain(event) && typeof id === "string" && id.length <= 64) timer?.dismissNotice(id);
+  });
+  ipcMain.handle("banner:choose", (event, input: { kind?: unknown; choice?: unknown }) => {
+    if (!fromMain(event)) return { ok: false, message: "Not allowed." };
+    return chooseBanner(input?.kind, input?.choice);
+  });
+  ipcMain.on("today:refresh", (event) => {
+    if (fromMain(event)) void loadToday(QUICK_RETRY_DELAYS, true);
+  });
+  ipcMain.on("today:stop-reminders", (event) => {
+    if (!fromMain(event)) return;
     stopRemindersToday();
     log("info", "Project reminders stopped for today");
   });
-  ipcMain.on("update:install", (event) => {
-    if (fromBriefing(event)) void installUpdate();
-  });
-  ipcMain.on("update:later", (event) => {
-    if (!fromBriefing(event)) return;
-    snoozeUpdatePrompt(Date.now() + UPDATE_SNOOZE_MS);
-    sendUpdate(null);
-  });
-  ipcMain.on("briefing:dismiss", (event) => {
-    if (fromBriefing(event)) hideBriefing();
-  });
-  ipcMain.on("briefing:remind", (event) => {
-    if (!fromBriefing(event)) return;
-    if (remindTimer) clearTimeout(remindTimer);
-    remindTimer = setTimeout(() => void showBriefing(QUICK_RETRY_DELAYS), REMIND_AFTER_MS);
-    log("info", "Reminder set for 30 minutes");
-  });
-  ipcMain.on("briefing:refresh", (event) => {
-    if (fromBriefing(event)) void showBriefing(QUICK_RETRY_DELAYS, true);
-  });
-  ipcMain.on("briefing:menu", (event) => {
-    if (fromBriefing(event) && briefingWin) buildMenu().popup({ window: briefingWin });
-  });
-  ipcMain.on("briefing:docked", (event, value: unknown) => {
-    if (!fromBriefing(event)) return;
-    applyDock(value === true);
-    if (value !== true) void pollLive(); // opened again: bring the rows up to date straight away
-  });
-  ipcMain.on("briefing:watch-tasks", (event, ids: unknown) => {
-    if (!fromBriefing(event) || !Array.isArray(ids)) return;
-    watchedTaskIds = ids.filter((id): id is string => typeof id === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(id)).slice(0, 40);
-    void pollLive();
-  });
-  ipcMain.on("briefing:drag-start", (event) => {
-    if (!fromBriefing(event) || !briefingWin) return;
-    const b = briefingWin.getBounds();
-    dragOrigin = { x: b.x, y: b.y };
-  });
-  ipcMain.on("briefing:drag-move", (event, dx: unknown, dy: unknown) => {
-    if (!fromBriefing(event) || !briefingWin || !dragOrigin) return;
-    if (typeof dx !== "number" || typeof dy !== "number" || !Number.isFinite(dx) || !Number.isFinite(dy)) return;
-    const win = briefingWin;
-    const { workArea } = screen.getPrimaryDisplay();
-    if (briefingDocked) {
-      // Minimised: slide along the right screen edge only.
-      const y = Math.min(Math.max(dragOrigin.y + dy, workArea.y), workArea.y + workArea.height - DOCKED_HEIGHT);
-      win.setPosition(win.getBounds().x, Math.round(y));
-    } else {
-      const p = clampOpenPosition(dragOrigin.x + dx, dragOrigin.y + dy);
-      win.setPosition(p.x, p.y);
-    }
-  });
-  ipcMain.on("briefing:drag-end", (event) => {
-    if (!fromBriefing(event) || !briefingWin) return;
-    dragOrigin = null;
-    if (!briefingDocked) {
-      const b = briefingWin.getBounds();
-      setWindowPos({ x: b.x, y: b.y });
-    }
-  });
-  ipcMain.on("briefing:hit-rects", (event, rects: unknown) => {
-    if (!fromBriefing(event) || !Array.isArray(rects)) return;
-    hitRects = rects
-      .slice(0, 4)
-      .filter((r): r is HitRect => !!r && [r.x, r.y, r.w, r.h].every((n) => typeof n === "number" && Number.isFinite(n)));
-  });
-  ipcMain.on("briefing:interactive", (event, interactive: unknown) => {
-    if (!fromBriefing(event) || !briefingWin) return;
-    briefingWin.setIgnoreMouseEvents(interactive !== true, { forward: true });
-  });
-  ipcMain.on("open-url", (event, url: unknown) => {
-    if (fromBriefing(event) || fromSetup(event)) void openExternalSafely(url);
-  });
-
   ipcMain.handle("task:action", async (event, input: { action?: unknown; taskId?: unknown }) => {
-    if (!briefingWin || briefingWin.isDestroyed() || event.sender !== briefingWin.webContents) {
-      return { ok: false, message: "Not allowed." };
-    }
+    if (!fromMain(event)) return { ok: false, message: "Not allowed." };
     const action = input?.action;
     const taskId = typeof input?.taskId === "string" ? input.taskId : "";
     if (action !== "complete" && action !== "start-timer" && action !== "stop-timer") return { ok: false, message: "Unknown action." };
-    if (action !== "stop-timer" && !/^[A-Za-z0-9_-]{1,40}$/.test(taskId)) return { ok: false, message: "Unknown task." };
+    if (!ID_PATTERN.test(taskId)) return { ok: false, message: "Unknown task." };
+    if (action === "stop-timer") return stopTimer("USER");
     const result = await postTaskAction(action, taskId);
-    // Whatever the action changed (a timer started elsewhere stops, etc.), refresh the rows now.
-    if (result.ok) setTimeout(() => void pollLive(), 400);
+    // Whatever changed (a timer started from the briefing, a task closed), refresh both tabs.
+    if (result.ok) {
+      void timer?.flush();
+      void loadToday(QUICK_RETRY_DELAYS, true);
+    }
     return result;
   });
+  ipcMain.on("open-url", (event, url: unknown) => {
+    if (fromMain(event) || fromSetup(event)) void openExternalSafely(url);
+  });
+  ipcMain.on("app:open-panel", (event, page: unknown) => {
+    if (!fromMain(event) || typeof page !== "string" || !PANEL_PAGES[page]) return;
+    const server = getServerUrl();
+    if (server) void openExternalSafely(new URL(PANEL_PAGES[page], server).toString());
+  });
+  ipcMain.on("app:open-settings", (event) => {
+    if (fromMain(event)) openSetup();
+  });
+  ipcMain.on("update:install", (event) => {
+    if (fromMain(event)) void installUpdate();
+  });
+  ipcMain.on("update:later", (event) => {
+    if (!fromMain(event)) return;
+    snoozeUpdatePrompt(Date.now() + UPDATE_SNOOZE_MS);
+    sendUpdate(null);
+  });
+
   ipcMain.handle("settings:get", (event) => {
     if (!fromSetup(event)) return null;
     return { serverUrl: getServerUrl() || DEFAULT_SERVER_URL, hasToken: hasToken() };
@@ -631,9 +707,11 @@ function registerIpc(): void {
       const token = readTokenInput(input?.token, !hasToken());
       saveConnection(serverUrl, token);
       log("info", "Connection settings saved");
-      // Show the first real briefing straight away so the person sees it working.
-      void showBriefing(QUICK_RETRY_DELAYS, true);
-      return { ok: true, message: "Saved. The next briefing will use these settings." };
+      // Show the tracker straight away so the person sees it working.
+      void timer?.flush();
+      void loadToday(QUICK_RETRY_DELAYS, true);
+      showWindow("timer");
+      return { ok: true, message: "Saved. The time tracker is connected." };
     } catch (err) {
       return { ok: false, message: err instanceof Error ? err.message : "Could not save." };
     }

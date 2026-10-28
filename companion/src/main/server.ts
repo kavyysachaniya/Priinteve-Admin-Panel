@@ -1,5 +1,6 @@
 import { net } from "electron";
 import { parseLive, parseReminder, parseUpdateInfo, type LivePayload, type ReminderPayload, type UpdateInfo } from "../shared/briefing";
+import { parseOpsResponse, parseTimerState, type TimerOp } from "../shared/timer";
 import { describeError, log } from "./log";
 import { getConnection } from "./store";
 
@@ -68,4 +69,53 @@ export async function postTaskAction(action: string, taskId: string): Promise<Ta
     log("warn", `Task action ${action} failed: ${describeError(err)}`);
     return { ok: false, message: "Couldn't reach the server. Check your connection." };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Timer
+// ---------------------------------------------------------------------------
+
+/** Why a timer call failed: no network/server, the token was revoked, or the server refused. */
+export type TimerCallError = "offline" | "auth" | "server" | "unpaired";
+
+type TimerCall<T> = { ok: true; data: T } | { ok: false; error: TimerCallError; status?: number };
+
+async function timerCall<T>(pathname: string, parse: (input: unknown) => T | null, body?: unknown): Promise<TimerCall<T>> {
+  const connection = getConnection();
+  if (!connection) return { ok: false, error: "unpaired" };
+  try {
+    const res = await net.fetch(new URL(pathname, connection.serverUrl).toString(), {
+      method: body === undefined ? "GET" : "POST",
+      headers: {
+        Authorization: `Bearer ${connection.token}`,
+        Accept: "application/json",
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      redirect: "error",
+    });
+    if (res.status === 401) return { ok: false, error: "auth", status: 401 };
+    if (!res.ok) {
+      log("warn", `${pathname} answered HTTP ${res.status}`);
+      // 5xx and 429 are worth retrying later; other 4xx mean the request itself was refused.
+      return { ok: false, error: res.status >= 500 || res.status === 429 ? "offline" : "server", status: res.status };
+    }
+    const data = parse(await res.json());
+    if (data === null) return { ok: false, error: "server", status: res.status };
+    return { ok: true, data };
+  } catch (err) {
+    log("warn", `${pathname} failed: ${describeError(err)}`);
+    return { ok: false, error: "offline" };
+  }
+}
+
+export function fetchTimerState() {
+  return timerCall("/api/companion/timer", parseTimerState);
+}
+
+export function postTimerOps(ops: TimerOp[]) {
+  // Only the fields the server reads; display-only names stay on this PC.
+  const payload = ops.map(({ projectName: _p, taskTitle: _t, ...op }) => op);
+  return timerCall("/api/companion/timer/ops", parseOpsResponse, { ops: payload });
 }

@@ -7,7 +7,9 @@ import {
 } from "@/lib/auth/projects";
 import type { SessionUser } from "@/lib/auth/session";
 import type { ProjectFormValues, TimeEntryUpdateValues } from "@/lib/validations/project";
-import type { Prisma, ProjectPriority, ProjectStatus, TimeEntryStatus } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import type { ProjectPriority, ProjectStatus, TimeEntryStatus } from "@prisma/client";
+import { createId } from "@paralleldrive/cuid2";
 
 const PAGE_SIZE = 15;
 
@@ -465,10 +467,20 @@ export async function getProjectStats(user?: SessionUser) {
   };
 }
 
+/** Normalises an optional project code and rejects one already used by another project. */
+async function uniqueProjectCode(raw: string | undefined, projectId?: string) {
+  const code = raw?.trim().toUpperCase() || null;
+  if (!code) return null;
+  const clash = await prisma.project.findUnique({ where: { code }, select: { id: true } });
+  if (clash && clash.id !== projectId) throw new Error(`Project code "${code}" is already used by another project.`);
+  return code;
+}
+
 export async function createProject(values: ProjectFormValues, userId?: string) {
   const project = await prisma.project.create({
     data: {
       name: values.name.trim(),
+      code: await uniqueProjectCode(values.code),
       description: values.description?.trim() || null,
       status: values.status,
       priority: values.priority,
@@ -540,13 +552,14 @@ export async function updateProject(id: string, values: ProjectFormValues, userI
           status: "COMPLETED",
           endedAt: now,
           durationSeconds: elapsed,
+          stopReason: "PROJECT_COMPLETED",
         },
       });
     }
     // Complete any paused entries as well
     await prisma.projectTimeEntry.updateMany({
       where: { projectId: id, status: "PAUSED" },
-      data: { status: "COMPLETED" },
+      data: { status: "COMPLETED", stopReason: "PROJECT_COMPLETED" },
     });
   }
 
@@ -565,7 +578,7 @@ export async function updateProject(id: string, values: ProjectFormValues, userI
         const elapsed = Math.max(0, Math.floor((now.getTime() - new Date(running.startedAt).getTime()) / 1000));
         await prisma.projectTimeEntry.update({
           where: { id: running.id },
-          data: { status: "COMPLETED", endedAt: now, durationSeconds: elapsed },
+          data: { status: "COMPLETED", endedAt: now, durationSeconds: elapsed, stopReason: "AUTO_UNASSIGN" },
         });
       }
     }
@@ -602,6 +615,7 @@ export async function updateProject(id: string, values: ProjectFormValues, userI
     where: { id },
     data: {
       name: values.name.trim(),
+      code: await uniqueProjectCode(values.code, id),
       description: values.description?.trim() || null,
       status: values.status,
       priority: values.priority,
@@ -712,6 +726,7 @@ export async function assignEmployeesToProject(
             status: "COMPLETED",
             endedAt: now,
             durationSeconds: elapsed,
+            stopReason: "AUTO_UNASSIGN",
           },
         });
       }
@@ -792,6 +807,7 @@ export async function unassignEmployeeFromProject(
           status: "COMPLETED",
           endedAt: now,
           durationSeconds: elapsed,
+          stopReason: "AUTO_UNASSIGN",
         },
       });
     }
@@ -819,19 +835,149 @@ export async function unassignEmployeeFromProject(
 // ---------------------------------------------------------------------------
 // Timer Operations (Spec 4.4 & 4.5)
 // ---------------------------------------------------------------------------
+//
+// A work session is one start → (pause → resume)* → stop. Each running stretch is its own
+// ProjectTimeEntry row ("segment"); segments of one session share `sessionId`. Paused time is
+// the gap between segments, so it is never counted. Durations always come from stored
+// timestamps; nothing here trusts a client-side counter.
+
+/** Sessions longer than this are flagged for an admin to review. */
+const LONG_SESSION_SECONDS = 43200; // 12 hours
+
+export type TimerSource = "WEB" | "DESKTOP" | "DESKTOP_OFFLINE";
+export type TimerStopReason =
+  | "USER"
+  | "SWITCH"
+  | "SHUTDOWN"
+  | "RECOVERY"
+  | "AUTO_UNASSIGN"
+  | "PROJECT_COMPLETED";
+
+export interface TimerOpOptions {
+  /**
+   * When the action really happened (a desktop action queued while offline). Clamped so it is
+   * never in the future and never before the segment it closes; defaults to now.
+   */
+  at?: Date;
+  source?: TimerSource;
+  /** Idempotency key for start/resume; a replay finds the segment already created. */
+  clientOpId?: string;
+  stopReason?: TimerStopReason;
+}
+
+export const TIMER_ALREADY_RUNNING_MESSAGE =
+  "You already have a timer running. Stop it before starting another.";
+
+// Serializable isolation makes "check nothing is running, then insert" safe against double
+// clicks, two tabs and the desktop app racing each other. The partial unique index
+// ProjectTimeEntry_one_active_per_user (prisma/sql/active-timer-index.sql) is the backstop.
+const TIMER_TX_OPTIONS = {
+  ...TX_OPTIONS,
+  isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+};
+
+function toTimerError(err: unknown): unknown {
+  if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    if (err.code === "P2002" && !String(err.meta?.target ?? "").includes("clientOpId")) {
+      return new Error(TIMER_ALREADY_RUNNING_MESSAGE);
+    }
+    if (err.code === "P2034") {
+      return new Error("Another timer change happened at the same moment. Please try again.");
+    }
+  }
+  return err;
+}
+
+async function runTimerTx<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  try {
+    return await prisma.$transaction(fn, TIMER_TX_OPTIONS);
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2034") {
+      try {
+        return await prisma.$transaction(fn, TIMER_TX_OPTIONS);
+      } catch (retryErr) {
+        throw toTimerError(retryErr);
+      }
+    }
+    throw toTimerError(err);
+  }
+}
+
+/** The moment an action takes effect: `at` (if given), never in the future, never before `floor`. */
+function effectiveTime(at: Date | undefined, floor?: Date | null): Date {
+  const now = Date.now();
+  let t = at ? Math.min(at.getTime(), now) : now;
+  if (floor) t = Math.max(t, floor.getTime());
+  return new Date(t);
+}
+
+function secondsBetween(from: Date, to: Date): number {
+  return Math.max(0, Math.floor((to.getTime() - from.getTime()) / 1000));
+}
+
+/** Ends a running segment at `end` with the given status. */
+function closeSegment(
+  tx: Prisma.TransactionClient,
+  entry: { id: string; startedAt: Date },
+  end: Date,
+  status: "PAUSED" | "COMPLETED",
+  extra: Prisma.ProjectTimeEntryUpdateInput = {}
+) {
+  const durationSeconds = secondsBetween(entry.startedAt, end);
+  return tx.projectTimeEntry.update({
+    where: { id: entry.id },
+    data: {
+      status,
+      endedAt: end,
+      durationSeconds,
+      flaggedForReview: durationSeconds > LONG_SESSION_SECONDS,
+      ...extra,
+    },
+  });
+}
+
+async function loadTimerUser(tx: Prisma.TransactionClient, userId?: string) {
+  if (!userId) return null;
+  return tx.user.findUnique({
+    where: { id: userId },
+    select: { id: true, role: true, name: true, email: true, customerId: true },
+  });
+}
+
+function assertMayTrackOn(
+  user: { id: string; role: string } | null,
+  project: { assignedToId: string | null; assignments: Array<{ employeeId: string }> }
+) {
+  if (!user) return;
+  if (user.role === "CLIENT") throw new Error("Clients cannot start timers.");
+  if (user.role === "EMPLOYEE") {
+    const isAssigned =
+      project.assignments.some((a) => a.employeeId === user.id) || project.assignedToId === user.id;
+    if (!isAssigned) throw new Error("You must be assigned to this project to start the timer.");
+  }
+}
 
 export async function startProjectTimer(
   projectId: string,
   userId?: string,
   taskDescription?: string,
   taskId?: string | null,
-  options?: { autoStopPrevious?: boolean }
+  options?: { autoStopPrevious?: boolean } & TimerOpOptions
 ) {
   let projectName = "";
   let customerId: string | null = null;
   let autoStoppedProjectName: string | null = null;
+  let replayed = false;
 
-  const timeEntry = await prisma.$transaction(async (tx) => {
+  const timeEntry = await runTimerTx(async (tx) => {
+    if (options?.clientOpId) {
+      const existing = await tx.projectTimeEntry.findUnique({ where: { clientOpId: options.clientOpId } });
+      if (existing) {
+        replayed = true;
+        return existing;
+      }
+    }
+
     const project = await tx.project.findUnique({
       where: { id: projectId },
       include: {
@@ -850,110 +996,78 @@ export async function startProjectTimer(
       throw new Error("Cannot start timer on a completed project. Please reopen the project first.");
     }
 
-    // Role verification
-    if (userId) {
-      const user = await tx.user.findUnique({
-        where: { id: userId },
-        select: { id: true, role: true },
+    assertMayTrackOn(await loadTimerUser(tx, userId), project);
+
+    if (taskId) {
+      const task = await tx.task.findUnique({
+        where: { id: taskId },
+        select: { projectId: true, status: true },
       });
-      if (user && user.role === "EMPLOYEE") {
-        const isAssigned =
-          project.assignments.some((a) => a.employeeId === userId) ||
-          project.assignedToId === userId;
-        if (!isAssigned) {
-          throw new Error("You must be assigned to this project to start the timer.");
-        }
-      } else if (user && user.role === "CLIENT") {
-        throw new Error("Clients cannot start timers.");
+      if (!task || task.projectId !== projectId) {
+        throw new Error("That task doesn't belong to this project.");
+      }
+      if (task.status === "COMPLETED" || task.status === "CANCELLED") {
+        throw new Error("This task is already closed. Reopen it before tracking time.");
       }
     }
 
-    // Check if this project already has an active running timer
-    const existingRunning = await tx.projectTimeEntry.findFirst({
-      where: {
-        projectId,
-        status: "RUNNING",
-      },
-    });
+    let startFloor: Date | null = null;
 
-    // If options.autoStopPrevious is NOT set (e.g. test scripts), enforce strict checks
-    if (!options?.autoStopPrevious) {
-      if (existingRunning) {
-        throw new Error("This project already has an active timer.");
-      }
+    if (userId) {
+      const userActiveTimer = await tx.projectTimeEntry.findFirst({
+        where: { userId, status: "RUNNING" },
+        include: { project: { select: { id: true, name: true } } },
+      });
 
-      if (userId) {
-        const userActiveTimer = await tx.projectTimeEntry.findFirst({
-          where: {
-            userId,
-            status: "RUNNING",
-          },
-          include: {
-            project: { select: { id: true, name: true } },
-          },
-        });
-
-        if (userActiveTimer) {
+      if (userActiveTimer) {
+        // If options.autoStopPrevious is NOT set (e.g. test scripts), enforce strict checks
+        if (!options?.autoStopPrevious) {
           throw new Error(
             `You already have an active timer running on project "${userActiveTimer.project?.name || "another project"}". Please pause or stop it first.`
           );
         }
-      }
-    } else {
-      // Auto-stop previous timer for user (Spec 4.4)
-      if (userId) {
-        const userActiveTimer = await tx.projectTimeEntry.findFirst({
-          where: {
-            userId,
-            status: "RUNNING",
-          },
-          include: {
-            project: { select: { id: true, name: true } },
-          },
-        });
-
-        if (userActiveTimer) {
-          const now = new Date();
-          autoStoppedProjectName = userActiveTimer.project?.name || "another project";
-          const elapsed = Math.max(0, Math.floor((now.getTime() - new Date(userActiveTimer.startedAt).getTime()) / 1000));
-          const isFlagged = elapsed > 43200; // >12 hours
-          await tx.projectTimeEntry.update({
-            where: { id: userActiveTimer.id },
-            data: {
-              status: "COMPLETED",
-              endedAt: now,
-              durationSeconds: elapsed,
-              flaggedForReview: isFlagged,
-            },
-          });
-        }
+        // Auto-stop previous timer for user (Spec 4.4): switching tasks ends the old session first.
+        autoStoppedProjectName = userActiveTimer.project?.name || "another project";
+        const stopAt = effectiveTime(options.at, userActiveTimer.startedAt);
+        await closeSegment(tx, userActiveTimer, stopAt, "COMPLETED", { stopReason: "SWITCH" });
+        startFloor = stopAt;
       }
 
-      // If another user is running a timer on this project, ensure only 1 active per project
-      const otherRunning = await tx.projectTimeEntry.findFirst({
-        where: {
-          projectId,
-          status: "RUNNING",
-          ...(userId ? { userId: { not: userId } } : {}),
-        },
+      // A new session closes any paused session the user left behind.
+      await tx.projectTimeEntry.updateMany({
+        where: { userId, status: "PAUSED" },
+        data: { status: "COMPLETED", stopReason: "SWITCH" },
       });
-      if (otherRunning) {
-        throw new Error("This project already has an active timer.");
-      }
     }
 
-    const now = new Date();
+    // Only one person's timer runs on a project at a time.
+    const otherRunning = await tx.projectTimeEntry.findFirst({
+      where: {
+        projectId,
+        status: "RUNNING",
+        ...(userId ? { userId: { not: userId } } : {}),
+      },
+    });
+    if (otherRunning) {
+      throw new Error("This project already has an active timer.");
+    }
+
+    const id = createId();
     const finalDescription = taskDescription?.trim() || "Working on project";
 
     const entry = await tx.projectTimeEntry.create({
       data: {
+        id,
+        sessionId: id,
         projectId,
         userId: userId || null,
-        startedAt: now,
+        startedAt: effectiveTime(options?.at, startFloor),
         status: "RUNNING",
         taskDescription: finalDescription,
         notes: finalDescription,
         taskId: taskId || null,
+        source: options?.source ?? "WEB",
+        clientOpId: options?.clientOpId ?? null,
       },
     });
 
@@ -964,28 +1078,38 @@ export async function startProjectTimer(
       });
     }
 
-    return entry;
-  }, TX_OPTIONS);
+    if (taskId) {
+      await tx.task.updateMany({
+        where: { id: taskId, status: "TODO" },
+        data: { status: "IN_PROGRESS" },
+      });
+    }
 
-  logActivity({
-    type: "TIMER_STARTED",
-    message: `Timer started on project "${projectName}".`,
-    entityType: "project",
-    entityId: projectId,
-    projectId,
-    customerId,
-    userId: userId || null,
-  }).catch(() => {});
+    return entry;
+  });
+
+  if (!replayed) {
+    logActivity({
+      type: "TIMER_STARTED",
+      message: `Timer started on project "${projectName}".`,
+      entityType: "project",
+      entityId: projectId,
+      projectId,
+      customerId,
+      userId: userId || null,
+    }).catch(() => {});
+  }
 
   return Object.assign(timeEntry, { autoStoppedProjectName });
 }
 
-export async function pauseProjectTimer(projectId: string, userId?: string) {
+export async function pauseProjectTimer(projectId: string, userId?: string, options: TimerOpOptions = {}) {
   let projectName = "";
   let customerId: string | null = null;
   let elapsed = 0;
+  let changed = false;
 
-  const updated = await prisma.$transaction(async (tx) => {
+  const updated = await runTimerTx(async (tx) => {
     const project = await tx.project.findUnique({
       where: { id: projectId },
       select: { id: true, name: true, customerId: true },
@@ -1007,6 +1131,14 @@ export async function pauseProjectTimer(projectId: string, userId?: string) {
     });
 
     if (!runningEntry) {
+      // Pausing twice (a retried request) returns the segment that is already paused.
+      const paused = userId
+        ? await tx.projectTimeEntry.findFirst({
+            where: { projectId, userId, status: "PAUSED" },
+            orderBy: { startedAt: "desc" },
+          })
+        : null;
+      if (paused) return paused;
       throw new Error("No active running timer found for this project.");
     }
 
@@ -1014,42 +1146,44 @@ export async function pauseProjectTimer(projectId: string, userId?: string) {
       throw new Error("You can only control your own timer.");
     }
 
-    const now = new Date();
-    elapsed = Math.max(0, Math.floor((now.getTime() - new Date(runningEntry.startedAt).getTime()) / 1000));
-    const isFlagged = elapsed > 43200;
+    const end = effectiveTime(options.at, runningEntry.startedAt);
+    elapsed = secondsBetween(runningEntry.startedAt, end);
+    changed = true;
+    return closeSegment(tx, runningEntry, end, "PAUSED");
+  });
 
-    return tx.projectTimeEntry.update({
-      where: { id: runningEntry.id },
-      data: {
-        status: "PAUSED",
-        endedAt: now,
-        durationSeconds: elapsed,
-        flaggedForReview: isFlagged,
-      },
-    });
-  }, TX_OPTIONS);
-
-  logActivity({
-    type: "TIMER_PAUSED",
-    message: `Timer paused on project "${projectName}". Recorded session: ${elapsed}s.`,
-    entityType: "project",
-    entityId: projectId,
-    projectId,
-    customerId,
-    userId: userId || null,
-  }).catch(() => {});
+  if (changed) {
+    logActivity({
+      type: "TIMER_PAUSED",
+      message: `Timer paused on project "${projectName}". Recorded session: ${elapsed}s.`,
+      entityType: "project",
+      entityId: projectId,
+      projectId,
+      customerId,
+      userId: userId || null,
+    }).catch(() => {});
+  }
 
   return updated;
 }
 
-export async function resumeProjectTimer(projectId: string, userId?: string) {
+export async function resumeProjectTimer(projectId: string, userId?: string, options: TimerOpOptions = {}) {
   let projectName = "";
   let customerId: string | null = null;
+  let replayed = false;
 
-  const resumedEntry = await prisma.$transaction(async (tx) => {
+  const resumedEntry = await runTimerTx(async (tx) => {
+    if (options.clientOpId) {
+      const existing = await tx.projectTimeEntry.findUnique({ where: { clientOpId: options.clientOpId } });
+      if (existing) {
+        replayed = true;
+        return existing;
+      }
+    }
+
     const project = await tx.project.findUnique({
       where: { id: projectId },
-      select: { id: true, name: true, status: true, customerId: true },
+      include: { assignments: { select: { employeeId: true } } },
     });
 
     if (!project) {
@@ -1063,16 +1197,7 @@ export async function resumeProjectTimer(projectId: string, userId?: string) {
       throw new Error("Cannot resume timer on a completed project.");
     }
 
-    const existingRunning = await tx.projectTimeEntry.findFirst({
-      where: {
-        projectId,
-        status: "RUNNING",
-      },
-    });
-
-    if (existingRunning) {
-      throw new Error("This project already has an active timer.");
-    }
+    assertMayTrackOn(await loadTimerUser(tx, userId), project);
 
     if (userId) {
       const userActiveTimer = await tx.projectTimeEntry.findFirst({
@@ -1086,28 +1211,55 @@ export async function resumeProjectTimer(projectId: string, userId?: string) {
       });
 
       if (userActiveTimer) {
+        // Resuming twice (a retried request) returns the segment that is already running.
+        if (userActiveTimer.projectId === projectId) {
+          replayed = true;
+          return userActiveTimer;
+        }
         throw new Error(
           `You already have an active timer running on project "${userActiveTimer.project?.name || "another project"}". Please pause or stop it first.`
         );
       }
     }
 
-    const lastEntry = await tx.projectTimeEntry.findFirst({
-      where: { projectId },
+    const existingRunning = await tx.projectTimeEntry.findFirst({
+      where: {
+        projectId,
+        status: "RUNNING",
+      },
+    });
+
+    if (existingRunning) {
+      throw new Error("This project already has an active timer.");
+    }
+
+    // Only your own paused segment can be resumed; it carries the task and session forward.
+    const paused = await tx.projectTimeEntry.findFirst({
+      where: { projectId, userId: userId ?? null, status: "PAUSED" },
       orderBy: { startedAt: "desc" },
     });
 
-    const now = new Date();
+    if (!paused) {
+      throw new Error("There is no paused timer of yours on this project to resume.");
+    }
+
+    await tx.projectTimeEntry.update({
+      where: { id: paused.id },
+      data: { status: "COMPLETED" },
+    });
 
     const entry = await tx.projectTimeEntry.create({
       data: {
         projectId,
         userId: userId || null,
-        startedAt: now,
+        sessionId: paused.sessionId ?? paused.id,
+        startedAt: effectiveTime(options.at, paused.endedAt),
         status: "RUNNING",
-        taskDescription: lastEntry?.taskDescription || "Resumed project work",
-        notes: lastEntry?.notes || "Resumed project work",
-        taskId: lastEntry?.taskId || null,
+        taskDescription: paused.taskDescription || "Resumed project work",
+        notes: paused.notes || "Resumed project work",
+        taskId: paused.taskId || null,
+        source: options.source ?? "WEB",
+        clientOpId: options.clientOpId ?? null,
       },
     });
 
@@ -1119,17 +1271,19 @@ export async function resumeProjectTimer(projectId: string, userId?: string) {
     }
 
     return entry;
-  }, TX_OPTIONS);
+  });
 
-  logActivity({
-    type: "TIMER_RESUMED",
-    message: `Timer resumed on project "${projectName}".`,
-    entityType: "project",
-    entityId: projectId,
-    projectId,
-    customerId,
-    userId: userId || null,
-  }).catch(() => {});
+  if (!replayed) {
+    logActivity({
+      type: "TIMER_RESUMED",
+      message: `Timer resumed on project "${projectName}".`,
+      entityType: "project",
+      entityId: projectId,
+      projectId,
+      customerId,
+      userId: userId || null,
+    }).catch(() => {});
+  }
 
   return resumedEntry;
 }
@@ -1137,13 +1291,16 @@ export async function resumeProjectTimer(projectId: string, userId?: string) {
 export async function stopProjectTimer(
   projectId: string,
   userId?: string,
-  taskDescription?: string
+  taskDescription?: string,
+  options: TimerOpOptions = {}
 ) {
   let projectName = "";
   let customerId: string | null = null;
   let elapsed = 0;
+  let stoppedEntryId: string | null = null;
+  let changed = false;
 
-  await prisma.$transaction(async (tx) => {
+  await runTimerTx(async (tx) => {
     const project = await tx.project.findUnique({
       where: { id: projectId },
       select: { id: true, name: true, customerId: true },
@@ -1156,8 +1313,6 @@ export async function stopProjectTimer(
     projectName = project.name;
     customerId = project.customerId;
 
-    const now = new Date();
-
     const runningEntry = await tx.projectTimeEntry.findFirst({
       where: {
         projectId,
@@ -1165,6 +1320,9 @@ export async function stopProjectTimer(
       },
       orderBy: { startedAt: "desc" },
     });
+
+    // Whose session is being stopped: the caller's, or (admin override) the runner's.
+    let ownerId = userId ?? null;
 
     if (runningEntry) {
       if (runningEntry.userId && userId && runningEntry.userId !== userId) {
@@ -1175,45 +1333,48 @@ export async function stopProjectTimer(
         if (caller?.role !== "ADMIN") {
           throw new Error("You can only control your own timer.");
         }
+        ownerId = runningEntry.userId;
       }
 
-      elapsed = Math.max(0, Math.floor((now.getTime() - new Date(runningEntry.startedAt).getTime()) / 1000));
-      const isFlagged = elapsed > 43200; // >12 hours safety
+      const end = effectiveTime(options.at, runningEntry.startedAt);
+      elapsed = secondsBetween(runningEntry.startedAt, end);
+      stoppedEntryId = runningEntry.id;
+      changed = true;
 
-      await tx.projectTimeEntry.update({
-        where: { id: runningEntry.id },
-        data: {
-          status: "COMPLETED",
-          endedAt: now,
-          durationSeconds: elapsed,
-          flaggedForReview: isFlagged,
-          ...(taskDescription ? { taskDescription, notes: taskDescription } : {}),
-        },
+      await closeSegment(tx, runningEntry, end, "COMPLETED", {
+        stopReason: options.stopReason ?? "USER",
+        ...(taskDescription ? { taskDescription, notes: taskDescription } : {}),
       });
     }
 
-    await tx.projectTimeEntry.updateMany({
+    // Close the owner's paused segments on this project; other people's sessions are theirs.
+    const closedPaused = await tx.projectTimeEntry.updateMany({
       where: {
         projectId,
+        userId: ownerId,
         status: "PAUSED",
       },
       data: {
         status: "COMPLETED",
+        stopReason: options.stopReason ?? "USER",
       },
     });
-  }, TX_OPTIONS);
+    if (closedPaused.count > 0) changed = true;
+  });
 
-  logActivity({
-    type: "TIMER_STOPPED",
-    message: `Timer stopped on project "${projectName}".`,
-    entityType: "project",
-    entityId: projectId,
-    projectId,
-    customerId,
-    userId: userId || null,
-  }).catch(() => {});
+  if (changed) {
+    logActivity({
+      type: "TIMER_STOPPED",
+      message: `Timer stopped on project "${projectName}".`,
+      entityType: "project",
+      entityId: projectId,
+      projectId,
+      customerId,
+      userId: userId || null,
+    }).catch(() => {});
+  }
 
-  return { success: true, elapsedSeconds: elapsed };
+  return { success: true, elapsedSeconds: elapsed, entryId: stoppedEntryId };
 }
 
 export async function getActiveTimerForUser(userId: string) {
@@ -1246,131 +1407,304 @@ export async function getActiveTimerForUser(userId: string) {
     taskDescription: activeEntry.taskDescription || activeEntry.notes || "Working on project",
     startedAt: activeEntry.startedAt,
     elapsedSeconds,
+    serverTime: new Date(now).toISOString(),
   };
 }
 
-export async function stopActiveTimerForUser(userId: string, taskDescription?: string) {
-  const activeEntry = await prisma.projectTimeEntry.findFirst({
+const OPEN_SEGMENT_INCLUDE = {
+  project: { select: { id: true, name: true, code: true } },
+  task: { select: { id: true, title: true } },
+} satisfies Prisma.ProjectTimeEntryInclude;
+
+/** The user's running segment, or else their most recent paused one. */
+async function findOpenSegment(userId: string) {
+  const running = await prisma.projectTimeEntry.findFirst({
+    where: { userId, status: "RUNNING" },
+    orderBy: { startedAt: "desc" },
+    include: OPEN_SEGMENT_INCLUDE,
+  });
+  if (running) return running;
+  return prisma.projectTimeEntry.findFirst({
+    where: { userId, status: "PAUSED" },
+    orderBy: { startedAt: "desc" },
+    include: OPEN_SEGMENT_INCLUDE,
+  });
+}
+
+/**
+ * The user's open work session (running or paused), with totals over all of its segments.
+ * Used by the desktop app; `workedSeconds` excludes paused gaps.
+ */
+export async function getActiveSessionForUser(userId: string) {
+  const current = await findOpenSegment(userId);
+  if (!current) return null;
+  const sessionId = current.sessionId ?? current.id;
+
+  const segments = await prisma.projectTimeEntry.findMany({
+    where: { OR: [{ sessionId }, { id: sessionId }], userId },
+    select: { id: true, startedAt: true, endedAt: true, durationSeconds: true, status: true },
+    orderBy: { startedAt: "asc" },
+  });
+
+  const now = new Date();
+  let closedSeconds = 0;
+  for (const s of segments) {
+    if (s.status !== "RUNNING") closedSeconds += s.durationSeconds || 0;
+  }
+
+  return {
+    entryId: current.id,
+    sessionId,
+    status: current.status as "RUNNING" | "PAUSED",
+    projectId: current.projectId,
+    projectName: current.project.name,
+    projectCode: current.project.code,
+    taskId: current.taskId,
+    taskTitle: current.task?.title || null,
+    taskDescription: current.taskDescription || current.notes || "Working on project",
+    sessionStartedAt: (segments[0]?.startedAt ?? current.startedAt).toISOString(),
+    segmentStartedAt: current.startedAt.toISOString(),
+    pausedAt: current.status === "PAUSED" ? current.endedAt?.toISOString() ?? null : null,
+    closedSeconds,
+    lastHeartbeatAt: current.lastHeartbeatAt?.toISOString() ?? null,
+    serverTime: now.toISOString(),
+  };
+}
+
+/** Records that the desktop app is alive while the user's timer runs (throttled to once a minute). */
+export async function recordTimerHeartbeat(userId: string) {
+  const cutoff = new Date(Date.now() - 60_000);
+  await prisma.projectTimeEntry.updateMany({
     where: {
       userId,
       status: "RUNNING",
+      OR: [{ lastHeartbeatAt: null }, { lastHeartbeatAt: { lt: cutoff } }],
     },
+    data: { lastHeartbeatAt: new Date() },
   });
+}
+
+export async function stopActiveTimerForUser(
+  userId: string,
+  taskDescription?: string,
+  options: TimerOpOptions = {}
+) {
+  const activeEntry = await findOpenSegment(userId);
 
   if (!activeEntry) {
     throw new Error("No active running timer found.");
   }
 
-  return stopProjectTimer(activeEntry.projectId, userId, taskDescription);
+  return stopProjectTimer(activeEntry.projectId, userId, taskDescription, options);
 }
 
 // ---------------------------------------------------------------------------
 // Time Entry Corrections (Spec 4.4)
 // ---------------------------------------------------------------------------
+//
+// Every edit or delete writes a TimeEntryCorrection with the values before the change, who made
+// it and why, in the same transaction. History is never overwritten silently.
+
+const EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function entrySnapshot(entry: {
+  startedAt: Date;
+  endedAt: Date | null;
+  durationSeconds: number;
+  status: string;
+  taskDescription: string | null;
+  taskId: string | null;
+  userId: string | null;
+  approvedAt: Date | null;
+}) {
+  return {
+    startedAt: entry.startedAt.toISOString(),
+    endedAt: entry.endedAt?.toISOString() ?? null,
+    durationSeconds: entry.durationSeconds,
+    status: entry.status,
+    taskDescription: entry.taskDescription,
+    taskId: entry.taskId,
+    userId: entry.userId,
+    approvedAt: entry.approvedAt?.toISOString() ?? null,
+  };
+}
+
+function assertMayCorrect(entry: { userId: string | null; createdAt: Date }, user: SessionUser, verb: string) {
+  // Spec 4.4: Admin can edit any time entry. Employees can edit only their own entries within 24 hours.
+  if (user.role === "ADMIN") return;
+  if (entry.userId !== user.id) {
+    throw new Error(`You can only ${verb} your own time entries.`);
+  }
+  if (Date.now() - new Date(entry.createdAt).getTime() > EDIT_WINDOW_MS) {
+    throw new Error(`Time entries can only be ${verb === "edit" ? "edited" : "deleted"} within 24 hours of creation.`);
+  }
+}
 
 export async function updateTimeEntry(
   id: string,
   values: TimeEntryUpdateValues,
   user: SessionUser
 ) {
-  const entry = await prisma.projectTimeEntry.findUnique({
-    where: { id },
-  });
+  const updated = await prisma.$transaction(async (tx) => {
+    const entry = await tx.projectTimeEntry.findUnique({
+      where: { id },
+    });
 
-  if (!entry) {
-    throw new Error("Time entry not found");
-  }
-
-  // Spec 4.4: Admin can edit any time entry. Employees can edit only their own entries within 24 hours.
-  if (user.role !== "ADMIN") {
-    if (entry.userId !== user.id) {
-      throw new Error("You can only edit your own time entries.");
+    if (!entry) {
+      throw new Error("Time entry not found");
     }
-    const ageMs = Date.now() - new Date(entry.createdAt).getTime();
-    if (ageMs > 24 * 60 * 60 * 1000) {
-      throw new Error("Time entries can only be edited within 24 hours of creation.");
+
+    assertMayCorrect(entry, user, "edit");
+
+    const startedAt = values.startedAt ? new Date(values.startedAt) : entry.startedAt;
+    const endedAt = values.endedAt ? new Date(values.endedAt) : entry.endedAt;
+
+    if (Number.isNaN(startedAt.getTime()) || (endedAt && Number.isNaN(endedAt.getTime()))) {
+      throw new Error("Enter a valid date and time.");
     }
-  }
-
-  let startedAt = entry.startedAt;
-  let endedAt = entry.endedAt;
-
-  if (values.startedAt) {
-    startedAt = new Date(values.startedAt);
-  }
-  if (values.endedAt !== undefined) {
-    endedAt = values.endedAt ? new Date(values.endedAt) : null;
-  }
-
-  let durationSeconds = values.durationSeconds ?? entry.durationSeconds;
-  if (endedAt && startedAt) {
-    if (endedAt.getTime() < startedAt.getTime()) {
+    if (startedAt.getTime() > Date.now() || (endedAt && endedAt.getTime() > Date.now())) {
+      throw new Error("Time entries can't be in the future.");
+    }
+    if (endedAt && endedAt.getTime() < startedAt.getTime()) {
       throw new Error("End time must be after start time.");
     }
-    if (values.durationSeconds === undefined) {
-      durationSeconds = Math.max(0, Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000));
-    }
-  }
 
-  // Overlapping check for this user
-  if (entry.userId && endedAt) {
-    const overlap = await prisma.projectTimeEntry.findFirst({
-      where: {
-        id: { not: id },
-        userId: entry.userId,
-        endedAt: { not: null },
-        startedAt: { lt: endedAt },
-        AND: [{ endedAt: { gt: startedAt } }],
+    // Giving a running or paused segment an end time closes it.
+    const status = endedAt && entry.status === "RUNNING" ? "COMPLETED" : entry.status;
+    // Recompute only when the times change, so a description fix never alters recorded time.
+    const timesChanged =
+      startedAt.getTime() !== entry.startedAt.getTime() ||
+      (endedAt?.getTime() ?? null) !== (entry.endedAt?.getTime() ?? null);
+    const durationSeconds = !endedAt
+      ? 0
+      : timesChanged || status !== entry.status
+        ? secondsBetween(startedAt, endedAt)
+        : entry.durationSeconds;
+
+    // Overlapping check for this user (a running segment counts up to now).
+    if (entry.userId) {
+      const effectiveEnd = endedAt ?? new Date();
+      const overlap = await tx.projectTimeEntry.findFirst({
+        where: {
+          id: { not: id },
+          userId: entry.userId,
+          startedAt: { lt: effectiveEnd },
+          OR: [{ endedAt: { gt: startedAt } }, { endedAt: null }],
+        },
+      });
+
+      if (overlap) {
+        throw new Error("This time period overlaps with another recorded time entry.");
+      }
+    }
+
+    const next = await tx.projectTimeEntry.update({
+      where: { id },
+      data: {
+        startedAt,
+        endedAt,
+        durationSeconds,
+        status,
+        ...(status !== entry.status && status === "COMPLETED" ? { stopReason: entry.stopReason ?? "USER" } : {}),
+        flaggedForReview: durationSeconds > LONG_SESSION_SECONDS,
+        approvedAt: null,
+        approvedById: null,
+        ...(values.taskDescription ? { taskDescription: values.taskDescription, notes: values.taskDescription } : {}),
       },
     });
 
-    if (overlap) {
-      throw new Error("This time period overlaps with another recorded time entry.");
-    }
-  }
+    await tx.timeEntryCorrection.create({
+      data: {
+        entryId: id,
+        projectId: entry.projectId,
+        action: "EDIT",
+        reason: values.reason,
+        before: entrySnapshot(entry),
+        after: entrySnapshot(next),
+        changedById: user.id,
+      },
+    });
 
-  const isFlagged = durationSeconds > 43200;
+    return next;
+  }, TX_OPTIONS);
 
-  return prisma.projectTimeEntry.update({
-    where: { id },
-    data: {
-      startedAt,
-      endedAt,
-      durationSeconds,
-      flaggedForReview: isFlagged,
-      approvedAt: null,
-      approvedById: null,
-      ...(values.taskDescription ? { taskDescription: values.taskDescription, notes: values.taskDescription } : {}),
-    },
-  });
+  logActivity({
+    type: "TIME_ENTRY_EDITED",
+    message: `Time entry corrected: ${values.reason}`,
+    entityType: "project",
+    entityId: updated.projectId,
+    projectId: updated.projectId,
+    userId: user.id,
+  }).catch(() => {});
+
+  return updated;
 }
 
-export async function deleteTimeEntry(id: string, user: SessionUser) {
+export async function deleteTimeEntry(id: string, user: SessionUser, reason: string) {
+  const deleted = await prisma.$transaction(async (tx) => {
+    const entry = await tx.projectTimeEntry.findUnique({
+      where: { id },
+    });
+
+    if (!entry) {
+      throw new Error("Time entry not found");
+    }
+
+    assertMayCorrect(entry, user, "delete");
+
+    if (entry.status === "RUNNING") {
+      throw new Error("Stop the timer before deleting this entry.");
+    }
+
+    await tx.timeEntryCorrection.create({
+      data: {
+        entryId: id, // set to null by the delete below; the snapshot keeps the values
+        projectId: entry.projectId,
+        action: "DELETE",
+        reason,
+        before: entrySnapshot(entry),
+        changedById: user.id,
+      },
+    });
+
+    return tx.projectTimeEntry.delete({ where: { id } });
+  }, TX_OPTIONS);
+
+  logActivity({
+    type: "TIME_ENTRY_DELETED",
+    message: `Time entry deleted (${deleted.durationSeconds}s): ${reason}`,
+    entityType: "project",
+    entityId: deleted.projectId,
+    projectId: deleted.projectId,
+    userId: user.id,
+  }).catch(() => {});
+
+  return deleted;
+}
+
+export async function listTimeEntryCorrections(entryId: string, user: SessionUser) {
   const entry = await prisma.projectTimeEntry.findUnique({
-    where: { id },
+    where: { id: entryId },
+    include: { project: { include: { assignments: { select: { employeeId: true } } } } },
   });
-
-  if (!entry) {
-    throw new Error("Time entry not found");
+  if (!entry) throw new Error("Time entry not found");
+  if (user.role === "CLIENT") throw new Error("Time entry not found");
+  if (user.role !== "ADMIN" && entry.userId !== user.id) {
+    throw new Error("You can only view the history of your own time entries.");
   }
 
-  if (user.role !== "ADMIN") {
-    if (entry.userId !== user.id) {
-      throw new Error("You can only delete your own time entries.");
-    }
-    const ageMs = Date.now() - new Date(entry.createdAt).getTime();
-    if (ageMs > 24 * 60 * 60 * 1000) {
-      throw new Error("Time entries can only be deleted within 24 hours of creation.");
-    }
-  }
-
-  return prisma.projectTimeEntry.delete({ where: { id } });
+  return prisma.timeEntryCorrection.findMany({
+    where: { entryId },
+    orderBy: { createdAt: "desc" },
+    include: { changedBy: { select: { id: true, name: true } } },
+  });
 }
 
-export async function getProjectTimerStatus(projectId: string) {
+export async function getProjectTimerStatus(projectId: string, user: SessionUser) {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     include: {
+      assignments: { select: { employeeId: true } },
       timeEntries: {
         include: {
           user: { select: { id: true, name: true } },
@@ -1379,16 +1713,25 @@ export async function getProjectTimerStatus(projectId: string) {
     },
   });
 
-  if (!project) {
+  if (!project || !canAccessProject(user, project)) {
     throw new Error("Project not found");
   }
 
-  const metrics = computeProjectTimerMetrics(project);
+  const metrics = computeProjectTimerMetrics({
+    ...project,
+    timeEntries: visibleTimeEntries(project.timeEntries, user),
+  }, { approvedOnly: user.role === "CLIENT" });
+
+  // Clients see that someone is working, not who or on what.
+  const activeTimer =
+    metrics.activeTimer && user.role === "CLIENT"
+      ? { id: metrics.activeTimer.id, startedAt: metrics.activeTimer.startedAt, elapsedSeconds: metrics.activeTimer.elapsedSeconds }
+      : metrics.activeTimer;
 
   return {
     projectId,
     status: metrics.timerStatus,
-    activeTimer: metrics.activeTimer,
+    activeTimer,
     totalDurationSeconds: metrics.totalDurationSeconds,
     serverTime: new Date().toISOString(),
   };
