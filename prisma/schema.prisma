@@ -191,6 +191,8 @@ model User {
   assignedProjects             Project[]              @relation("AssignedProjects")
   projectTimeEntries           ProjectTimeEntry[]
   approvedTimeEntries          ProjectTimeEntry[]     @relation("TimeEntryApprovedBy")
+  timeEntryCorrections         TimeEntryCorrection[]  @relation("TimeEntryCorrectedBy")
+  timerOperations              TimerOperation[]
   projectAssignments          ProjectAssignment[]    @relation("AssignedEmployee")
   assignedByProjectAssignments ProjectAssignment[]    @relation("AssignedByEmployee")
   taskMentions                 TaskMention[]          @relation("UserTaskMentions")
@@ -559,6 +561,9 @@ model Task {
   tags        String?
   reminder    DateTime?
   position    Float        @default(0)
+  /// Planned effort in minutes (optional).
+  estimatedMinutes Int?
+  completedAt      DateTime?
 
   assignedToId String?
   assignedTo   User?   @relation("AssignedTasks", fields: [assignedToId], references: [id])
@@ -660,6 +665,8 @@ model Note {
 model Project {
   id           String          @id @default(cuid())
   name         String
+  /// Optional short code (e.g. "PRI-WEB"), shown in time reports and exports.
+  code         String?         @unique
   description  String?
   status       ProjectStatus   @default(NOT_STARTED)
   priority     ProjectPriority @default(MEDIUM)
@@ -720,8 +727,23 @@ model ProjectTimeEntry {
   approvedAt       DateTime?
   approvedById     String?
   approvedBy       User?           @relation("TimeEntryApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  /// Logical work session: every segment of one start → pause/resume → stop shares it
+  /// (the first segment's id). Null only on rows written before sessions existed.
+  sessionId        String?
+  /// Idempotency key from the client that started this segment (desktop op id).
+  clientOpId       String?         @unique
+  /// Last time the desktop app confirmed it was alive while this segment ran.
+  lastHeartbeatAt  DateTime?
+  /// WEB | DESKTOP | DESKTOP_OFFLINE
+  source           String?
+  /// USER | SWITCH | SHUTDOWN | RECOVERY | AUTO_UNASSIGN | PROJECT_COMPLETED
+  stopReason       String?
+  /// Set when the segment was closed through the interrupted-session recovery flow.
+  interrupted      Boolean         @default(false)
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
+
+  corrections TimeEntryCorrection[]
 
   @@index([projectId, approvedAt])
   @@index([projectId])
@@ -730,7 +752,49 @@ model ProjectTimeEntry {
   @@index([startedAt])
   @@index([projectId, startedAt])
   @@index([userId, startedAt])
+  @@index([userId, endedAt])
+  @@index([sessionId])
   @@index([taskId])
+}
+
+/// Audit trail for every manual change to a time entry. The snapshot keeps the values
+/// before the change, so a deleted entry can still be reconstructed.
+model TimeEntryCorrection {
+  id          String            @id @default(cuid())
+  entryId     String?
+  entry       ProjectTimeEntry? @relation(fields: [entryId], references: [id], onDelete: SetNull)
+  projectId   String
+  /// EDIT | DELETE | RECOVERY | APPROVE | UNAPPROVE
+  action      String
+  reason      String
+  before      Json
+  after       Json?
+  changedById String?
+  changedBy   User?             @relation("TimeEntryCorrectedBy", fields: [changedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime          @default(now())
+
+  @@index([entryId])
+  @@index([projectId])
+  @@index([changedById])
+  @@index([createdAt])
+}
+
+/// Ledger of timer operations sent by clients (desktop journal). Replaying an opId returns
+/// the stored result instead of applying the operation twice.
+model TimerOperation {
+  id         String   @id @default(cuid())
+  opId       String   @unique
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// START | PAUSE | RESUME | STOP
+  type       String
+  occurredAt DateTime
+  receivedAt DateTime @default(now())
+  /// APPLIED | CONFLICT | REJECTED
+  status     String
+  result     Json
+
+  @@index([userId, receivedAt])
 }
 
 model TaskMention {

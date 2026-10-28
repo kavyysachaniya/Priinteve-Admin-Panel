@@ -90,8 +90,12 @@ export function ProjectForm({
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       {/* Project Overview */}
       <FormSection title="Project Details" description="Core project specifications, assignment, and status.">
-        <Field label="Project Name" required error={errors.name?.message} className="sm:col-span-2">
+        <Field label="Project Name" required error={errors.name?.message}>
           <Input placeholder="e.g. Website Redesign & Brand Assets" {...register("name")} disabled={submitting} />
+        </Field>
+
+        <Field label="Project Code" error={errors.code?.message}>
+          <Input placeholder="e.g. PRI-WEB (optional)" {...register("code")} disabled={submitting} />
         </Field>
 
         <Field label="Project Description" required error={errors.description?.message} className="sm:col-span-2">

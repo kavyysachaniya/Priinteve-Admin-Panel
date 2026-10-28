@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { TIMER_CHANGED_EVENT, notifyTimerChanged } from "@/lib/timer-events";
 import { Square, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +26,8 @@ interface ActiveTimerData {
   startedAt: string;
   taskDescription: string | null;
   taskId: string | null;
+  /** Server clock minus this browser's clock, so a wrong PC clock doesn't skew the display. */
+  clockOffsetMs: number;
 }
 
 export function ActiveTimerHeaderChip() {
@@ -43,9 +46,11 @@ export function ActiveTimerHeaderChip() {
         if (res.ok && mounted) {
           const data = await res.json();
           if (data.activeTimer) {
+            const serverTime = Date.parse(data.activeTimer.serverTime ?? "");
             setTimer({
               ...data.activeTimer,
               startedAt: data.activeTimer.startedAt,
+              clockOffsetMs: Number.isNaN(serverTime) ? 0 : serverTime - Date.now(),
             });
             setTaskDescription(data.activeTimer.taskDescription || "");
           } else {
@@ -61,11 +66,11 @@ export function ActiveTimerHeaderChip() {
     const interval = setInterval(load, 15000);
     const handleTimerChanged = () => void load();
 
-    window.addEventListener("timer-changed", handleTimerChanged);
+    window.addEventListener(TIMER_CHANGED_EVENT, handleTimerChanged);
     return () => {
       mounted = false;
       clearInterval(interval);
-      window.removeEventListener("timer-changed", handleTimerChanged);
+      window.removeEventListener(TIMER_CHANGED_EVENT, handleTimerChanged);
     };
   }, []);
 
@@ -73,8 +78,9 @@ export function ActiveTimerHeaderChip() {
     if (!timer?.startedAt) return;
 
     const startedTime = new Date(timer.startedAt).getTime();
+    const offset = timer.clockOffsetMs;
     const updateElapsed = () => {
-      const diff = Math.max(0, Math.floor((Date.now() - startedTime) / 1000));
+      const diff = Math.max(0, Math.floor((Date.now() + offset - startedTime) / 1000));
       setElapsedSeconds(diff);
     };
 
@@ -84,7 +90,7 @@ export function ActiveTimerHeaderChip() {
       cancelAnimationFrame(frame);
       clearInterval(ticker);
     };
-  }, [timer?.startedAt]);
+  }, [timer?.startedAt, timer?.clockOffsetMs]);
 
   const handleStop = async () => {
     setStopping(true);
@@ -103,7 +109,7 @@ export function ActiveTimerHeaderChip() {
       toast.success("Timer stopped.");
       setTimer(null);
       setStopModalOpen(false);
-      window.dispatchEvent(new CustomEvent("timer-changed"));
+      notifyTimerChanged();
       router.refresh();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to stop timer");

@@ -230,6 +230,10 @@ export function TaskForm({
           <Input type="time" {...register("dueTime")} />
         </Field>
 
+        <Field label="Planned Time (minutes)" error={errors.estimatedMinutes?.message}>
+          <Input type="number" min={0} step={5} inputMode="numeric" placeholder="e.g. 90" {...register("estimatedMinutes")} />
+        </Field>
+
         <Field label="Description & Checklist" className="sm:col-span-2" error={errors.description?.message}>
           <Textarea rows={3} placeholder="Task instructions or checklist items..." {...register("description")} />
         </Field>

@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { notifyTimerChanged } from "@/lib/timer-events";
 import {
   Select,
   SelectContent,
@@ -43,7 +44,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatDuration, formatTimerClock, formatDate, formatTime } from "@/lib/time-format";
+import { formatDuration, formatTimerClock, formatDate, formatTime, toDateTimeLocalValue } from "@/lib/time-format";
 import type { TimeEntryStatus } from "@prisma/client";
 
 interface TimeEntryData {
@@ -116,6 +117,9 @@ export function ProjectTimerTab({
   const [editDescription, setEditDescription] = useState("");
   const [editStartedAt, setEditStartedAt] = useState("");
   const [editEndedAt, setEditEndedAt] = useState("");
+  const [editReason, setEditReason] = useState("");
+  const [deletingEntry, setDeletingEntry] = useState<TimeEntryData | null>(null);
+  const [deleteReason, setDeleteReason] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [now] = useState(() => Date.now());
@@ -201,7 +205,7 @@ export function ProjectTimerTab({
 
       setServerActiveTimer(data.entry);
       setStartModalOpen(false);
-      window.dispatchEvent(new CustomEvent("timer-changed"));
+      notifyTimerChanged();
       router.refresh();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to start timer");
@@ -230,7 +234,7 @@ export function ProjectTimerTab({
       toast.success("Timer stopped.");
       setServerActiveTimer(null);
       setStopModalOpen(false);
-      window.dispatchEvent(new CustomEvent("timer-changed"));
+      notifyTimerChanged();
       router.refresh();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to stop timer");
@@ -243,17 +247,18 @@ export function ProjectTimerTab({
   const openEditModal = (entry: TimeEntryData) => {
     setEditingEntry(entry);
     setEditDescription(entry.taskDescription || entry.notes || "");
-    setEditStartedAt(
-      entry.startedAt ? new Date(entry.startedAt).toISOString().slice(0, 16) : ""
-    );
-    setEditEndedAt(
-      entry.endedAt ? new Date(entry.endedAt).toISOString().slice(0, 16) : ""
-    );
+    setEditStartedAt(toDateTimeLocalValue(entry.startedAt));
+    setEditEndedAt(toDateTimeLocalValue(entry.endedAt));
+    setEditReason("");
     setEditModalOpen(true);
   };
 
   const handleSaveEdit = async () => {
     if (!editingEntry) return;
+    if (editReason.trim().length < 3) {
+      toast.error("Say briefly why this time is being corrected.");
+      return;
+    }
     setIsSubmitting(true);
     try {
       const res = await fetch(`/api/time-entries/${editingEntry.id}`, {
@@ -263,6 +268,7 @@ export function ProjectTimerTab({
           startedAt: editStartedAt ? new Date(editStartedAt).toISOString() : undefined,
           endedAt: editEndedAt ? new Date(editEndedAt).toISOString() : undefined,
           taskDescription: editDescription.trim() || undefined,
+          reason: editReason.trim(),
         }),
       });
 
@@ -273,6 +279,7 @@ export function ProjectTimerTab({
 
       toast.success("Time entry updated.");
       setEditModalOpen(false);
+      notifyTimerChanged();
       router.refresh();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to update time entry");
@@ -281,12 +288,24 @@ export function ProjectTimerTab({
     }
   };
 
-  const handleDeleteEntry = async (entry: TimeEntryData) => {
-    if (!confirm("Are you sure you want to delete this recorded time entry?")) return;
+  const handleDeleteEntry = (entry: TimeEntryData) => {
+    setDeletingEntry(entry);
+    setDeleteReason("");
+  };
 
+  const confirmDeleteEntry = async () => {
+    if (!deletingEntry) return;
+    if (deleteReason.trim().length < 3) {
+      toast.error("Say briefly why this entry is being deleted.");
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
-      const res = await fetch(`/api/time-entries/${entry.id}`, {
+      const res = await fetch(`/api/time-entries/${deletingEntry.id}`, {
         method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: deleteReason.trim() }),
       });
 
       if (!res.ok) {
@@ -295,9 +314,12 @@ export function ProjectTimerTab({
       }
 
       toast.success("Time entry deleted.");
+      setDeletingEntry(null);
       router.refresh();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to delete time entry");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -910,6 +932,19 @@ export function ProjectTimerTab({
                 />
               </div>
             </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-entry-reason">Reason for the change *</Label>
+              <Input
+                id="edit-entry-reason"
+                value={editReason}
+                onChange={(e) => setEditReason(e.target.value)}
+                placeholder="e.g. Forgot to stop the timer at lunch"
+              />
+              <p className="text-muted-foreground">
+                The original times are kept in the entry&apos;s correction history.
+              </p>
+            </div>
           </div>
 
           <DialogFooter>
@@ -923,6 +958,38 @@ export function ProjectTimerTab({
             <Button onClick={handleSaveEdit} disabled={isSubmitting}>
               {isSubmitting ? <Loader2 className="size-4 animate-spin mr-1.5" /> : null}
               Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Entry Modal */}
+      <Dialog open={deletingEntry !== null} onOpenChange={(open) => !open && setDeletingEntry(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Time Entry</DialogTitle>
+            <DialogDescription>
+              The entry is removed from totals and reports. A copy is kept in the correction history.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-1.5 py-2 text-xs">
+            <Label htmlFor="delete-entry-reason">Reason *</Label>
+            <Input
+              id="delete-entry-reason"
+              value={deleteReason}
+              onChange={(e) => setDeleteReason(e.target.value)}
+              placeholder="e.g. Started the timer by mistake"
+            />
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeletingEntry(null)} disabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDeleteEntry} disabled={isSubmitting}>
+              {isSubmitting ? <Loader2 className="size-4 animate-spin mr-1.5" /> : null}
+              Delete Entry
             </Button>
           </DialogFooter>
         </DialogContent>

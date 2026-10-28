@@ -327,7 +327,19 @@ export function taskToFormValues(task: Task & { mentions?: Array<{ employeeId: s
     productionJobId: task.productionJobId ?? "",
     tags: task.tags ?? "",
     reminder: task.reminder ? new Date(task.reminder).toISOString().slice(0, 16) : "",
+    estimatedMinutes: task.estimatedMinutes ? String(task.estimatedMinutes) : "",
   };
+}
+
+/** Keeps the original completion time when a completed task is saved again; clears it on reopen. */
+function completedAtFor(next: TaskStatus, existing: { status: TaskStatus; completedAt: Date | null }) {
+  if (next !== "COMPLETED") return null;
+  return existing.status === "COMPLETED" ? existing.completedAt ?? new Date() : new Date();
+}
+
+function parseEstimatedMinutes(raw: string | undefined) {
+  const minutes = raw ? Number.parseInt(raw, 10) : NaN;
+  return Number.isFinite(minutes) && minutes > 0 ? minutes : null;
 }
 
 export async function createTask(data: TaskFormValues, user?: SessionUser) {
@@ -374,6 +386,8 @@ export async function createTask(data: TaskFormValues, user?: SessionUser) {
       title: data.title,
       description: data.description || null,
       status: data.status,
+      completedAt: data.status === "COMPLETED" ? new Date() : null,
+      estimatedMinutes: parseEstimatedMinutes(data.estimatedMinutes),
       priority: data.priority,
       projectId: targetProjectId,
       createdById: user?.id ?? null,
@@ -543,6 +557,8 @@ export async function updateTask(id: string, data: TaskFormValues, user?: Sessio
       title: data.title,
       description: data.description || null,
       status: data.status,
+      completedAt: completedAtFor(data.status, existing),
+      estimatedMinutes: parseEstimatedMinutes(data.estimatedMinutes),
       priority: data.priority,
       projectId: targetProjectId,
       dueDate: data.dueDate ? new Date(data.dueDate) : null,
@@ -660,7 +676,7 @@ export async function moveTask(id: string, input: MoveTaskInput, user?: SessionU
 
   const updated = await prisma.task.update({
     where: { id },
-    data: { status: input.status, position },
+    data: { status: input.status, position, completedAt: completedAtFor(input.status, existing) },
   });
 
   if (existing.status !== input.status) {
@@ -692,7 +708,7 @@ export async function toggleTaskStatus(id: string, user?: SessionUser) {
   const nextStatus: TaskStatus = existing.status === "COMPLETED" ? "TODO" : "COMPLETED";
   const updated = await prisma.task.update({
     where: { id },
-    data: { status: nextStatus },
+    data: { status: nextStatus, completedAt: completedAtFor(nextStatus, existing) },
   });
 
   await logActivity({

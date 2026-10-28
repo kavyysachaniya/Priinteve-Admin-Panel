@@ -6,6 +6,7 @@ import {
   projectFormSchema,
   startTimerSchema,
   timeEntryUpdateSchema,
+  timeEntryDeleteSchema,
   type ProjectFormValues,
   type TimeEntryUpdateValues,
 } from "@/lib/validations/project";
@@ -183,10 +184,14 @@ export async function updateTimeEntryAction(
   }
 }
 
-export async function deleteTimeEntryAction(id: string, projectId: string) {
+export async function deleteTimeEntryAction(id: string, projectId: string, reason: string) {
   const user = await requirePermission("projects:timer");
+  const parsed = timeEntryDeleteSchema.safeParse({ reason });
+  if (!parsed.success) {
+    return { success: false, message: parsed.error.issues[0]?.message || "A reason is required." };
+  }
   try {
-    await projectService.deleteTimeEntry(id, user);
+    await projectService.deleteTimeEntry(id, user, parsed.data.reason);
     revalidatePath(`/projects/${projectId}`);
     return { success: true, message: "Time entry deleted successfully." };
   } catch (err) {

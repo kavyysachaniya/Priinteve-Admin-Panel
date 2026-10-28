@@ -65,3 +65,14 @@ export function formatTime(date: Date | string | null | undefined): string {
   if (isNaN(d.getTime())) return "—";
   return format(d, "hh:mm a");
 }
+
+/**
+ * Value for an `<input type="datetime-local">` in the browser's own time zone
+ * ("yyyy-MM-ddTHH:mm"). `toISOString()` would give UTC and shift the time on save.
+ */
+export function toDateTimeLocalValue(value: Date | string | null | undefined): string {
+  if (!value) return "";
+  const date = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) return "";
+  return format(date, "yyyy-MM-dd'T'HH:mm");
+}

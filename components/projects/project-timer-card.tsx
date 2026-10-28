@@ -23,6 +23,7 @@ import {
 } from "@/lib/actions/projects";
 import { formatDuration, formatTimerClock } from "@/lib/time-format";
 import { toast } from "sonner";
+import { notifyTimerChanged } from "@/lib/timer-events";
 import type { ProjectDetail } from "@/lib/services/projects";
 
 export function ProjectTimerCard({ project }: { project: ProjectDetail }) {
@@ -77,6 +78,7 @@ export function ProjectTimerCard({ project }: { project: ProjectDetail }) {
       const res = await startProjectTimerAction(project.id);
       if (res.success) {
         toast.success(res.message);
+        notifyTimerChanged();
         router.refresh();
       } else {
         toast.error(res.message);
@@ -95,6 +97,7 @@ export function ProjectTimerCard({ project }: { project: ProjectDetail }) {
       const res = await pauseProjectTimerAction(project.id);
       if (res.success) {
         toast.success(res.message);
+        notifyTimerChanged();
         router.refresh();
       } else {
         toast.error(res.message);
@@ -113,6 +116,7 @@ export function ProjectTimerCard({ project }: { project: ProjectDetail }) {
       const res = await resumeProjectTimerAction(project.id);
       if (res.success) {
         toast.success(res.message);
+        notifyTimerChanged();
         router.refresh();
       } else {
         toast.error(res.message);
@@ -131,6 +135,7 @@ export function ProjectTimerCard({ project }: { project: ProjectDetail }) {
       const res = await stopProjectTimerAction(project.id);
       if (res.success) {
         toast.success(res.message);
+        notifyTimerChanged();
         router.refresh();
       } else {
         toast.error(res.message);
