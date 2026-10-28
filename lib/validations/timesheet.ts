@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { GROUPS, PRESETS, isDateKey } from "@/lib/timesheet";
+import { ENTRY_FILTERS, GROUPS, PRESETS, isDateKey, isMonthKey } from "@/lib/timesheet";
 
 const id = z.string().trim().regex(/^[A-Za-z0-9_-]{1,40}$/);
 const dateKey = z.string().trim().refine(isDateKey, "Use YYYY-MM-DD");
@@ -13,6 +13,9 @@ export const timesheetQuerySchema = z.object({
   user: id.optional().catch(undefined),
   project: id.optional().catch(undefined),
   task: id.optional().catch(undefined),
+  /** A calendar month (YYYY-MM); overrides the preset and custom range. */
+  month: z.string().trim().refine(isMonthKey, "Use YYYY-MM").optional().catch(undefined),
+  status: z.enum(ENTRY_FILTERS).catch("all"),
 });
 
 export type TimesheetQuery = z.infer<typeof timesheetQuerySchema>;
@@ -28,5 +31,7 @@ export function parseTimesheetQuery(raw: Record<string, string | string[] | unde
     user: first(raw.user),
     project: first(raw.project),
     task: first(raw.task),
+    month: first(raw.month),
+    status: first(raw.status),
   });
 }

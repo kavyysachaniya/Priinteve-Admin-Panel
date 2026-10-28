@@ -320,15 +320,37 @@ Services live in `lib/services/`, actions in `lib/actions/`, and module componen
 ## Timesheet
 
 - **Purpose:** tracked time per task, project, person or day over any period, for admins and employees.
-- **Routes:** `/timesheet` (`?preset=&from=&to=&group=&user=&project=&task=`) and `/api/timesheet/export` (CSV with the same filters and rules).
-- **Library and service:** `lib/timesheet.ts` (date-range presets, grouping, h:mm formatting; no database), `lib/services/timesheets.ts`, `lib/validations/timesheet.ts`.
+- **Routes:**
+  - `/timesheet` (`?preset=&from=&to=&month=YYYY-MM&group=&user=&project=&task=&status=all|running|completed|attention`);
+  - `/api/timesheet/export` (CSV with the same filters and rules, `?summary=1` for project/task totals);
+  - `/api/time-entries/[id]/corrections` (history).
+- **Library and service:**
+  - `lib/timesheet.ts`: date-range presets, months, clipping and day splitting, grouping, formatting; no database;
+  - `lib/csv.ts`;
+  - `lib/services/timesheets.ts`: `getTimesheet`, `getTimeOverview`, `listTimeAttention`;
+  - `lib/validations/timesheet.ts`.
+- **Page:**
+  - today / this week / this month cards, average per worked day, tasks completed this month;
+  - who is running now;
+  - a **Needs attention** list (interrupted, over 12 h, corrected, or running without a recent desktop heartbeat), with the correction history of each entry;
+  - the monthly export form;
+  - entry badges (interrupted, corrected, over 12 h, synced late).
+- **Monthly CSV:**
+  - one row per entry that overlaps the month, oldest first, with its original start and end in ISO 8601 with the zone offset;
+  - span seconds; recorded worked seconds; worked seconds in the month (decimal hours and HH:MM:SS); status, stop reason, interrupted/corrected/flagged flags, source, notes, created and updated;
+  - UTF-8 with BOM, formula-injection guard (`lib/csv.ts`), the zone in the file name;
+  - up to 50,000 entries.
 - **Periods:** Today, This week (Monday to Sunday), Last week, This month, Last month, This year, or a Custom from/to. Ranges are in the business time zone (Asia/Kolkata, or `APP_TIMEZONE`) and capped at 366 days. Invalid query values fall back to defaults.
 - **Group by:** Task, Project, Person, Day. Totals are h:mm; durations are stored as integer seconds.
 - **Rules:**
   - Employees always see only their own time, whatever the URL says. Admins see everyone and can pick a person.
   - Clients have no access (`proxy.ts` sends them to Projects, and the route needs `timesheet:view`).
-  - **Every stopped timer counts**, shared with the client or not. A running timer counts up to now.
-  - Entries are grouped by the day they **started**.
+  - **Every stopped timer counts**, shared with the client or not. A running timer counts up to now. Paused time never counts (it is the gap between segments).
+  - A range includes every entry that **overlaps** it and counts only the part inside it.
+    - A session from 23:00 to 01:00 gives an hour to each day.
+    - One crossing a month end is split between the months.
+    - An entry's recorded seconds win when it lies wholly inside the range.
+    - Stored timestamps are never changed.
   - At most 5,000 entries are summed per request (the page says so if the cap is hit), and the entries table lists the latest 300.
 - **Task page:** the **Time on this task** card shows the total, the last timer (who, when, how long) and every entry. Staff see time as soon as a timer stops; clients see only entries shared with them.
 

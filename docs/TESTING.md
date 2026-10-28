@@ -24,8 +24,11 @@ All run with `npx tsx`. Except `test-companion.ts`, they run against the databas
 | Script | Covers | Cleans up? | Run after changing |
 |---|---|---|---|
 | `scripts/test-flow.ts` | Customer → product → quotation → accept → convert → partial + full payment → dashboard/finance | **Yes**, before and after each run | Quotations, invoices, payments, money math, numbering, dashboard |
-| `scripts/test-project-timer.ts` | Projects, timer start/pause/resume/stop, concurrency rules, owner-only control, stats | **Only if every step passes** | Projects or timers |
-| `scripts/test-timesheet.ts` | Timesheet date presets (week/month/year/custom), the 366-day cap, DST day, grouping, hour formatting, query parsing. **No database, no network.** | Nothing to clean | Timesheet code |
+| `scripts/test-project-timer.ts` | Projects, timer start/pause/resume/stop, concurrency rules, owner-only control, sessions, double start, idempotent replays, offline stop time, correction audit, stats | Projects and customer **only if every step passes**; the throwaway employees and their entries always | Projects or timers |
+| `scripts/test-timer-ops.ts` | Desktop timer ops: idempotent replay, op ids bound to their account, offline batches with paused time, conflicts, switching, recovery audit, unassigned users | **Yes** (`finally`) | Companion timer, timer services |
+| `scripts/test-timesheet.ts` | Timesheet date presets (week/month/year/custom), the 366-day cap, DST day, grouping, hour formatting, query parsing, midnight and month-boundary splits, paused time, CSV escaping/Unicode. **No database, no network.** | Nothing to clean | Timesheet code, CSV export |
+| `companion/scripts/test-timer.mjs` (`cd companion && npm test`) | Desktop journal and sync controller: torn writes, offline start across restart, lost-response retry, paused time, offline stop, interrupted-session prompt. **No Electron, no network.** | Temp folder removed | `companion/src/main/*` |
+| `scripts/backfill-time-sessions.ts` | Not a test: one-off session backfill; reports whether the one-active-timer index exists | — | After `db:push` on an old database |
 | `scripts/test-companion.ts` | Companion email scoring, time-zone days, SSRF blocking, Slack matching, encryption, website classification (local server). **No database, no external network.** | Nothing to clean | Companion services |
 | `scripts/test-accounting-phase4.ts` | Chart of accounts, auto-journals for invoices/payments/expenses, P&L, cash flow, GST, balance sheet | **No** | Accounting, expenses, reports |
 
@@ -60,13 +63,22 @@ npx tsx scripts/test-project-timer.ts
 
 What it checks:
 
-1. Uses the **first user in the database** as the test user (creates one only if there are none).
+1. Uses the **first `ADMIN` user** for steps 3–7 (creates one only if there are none). Make sure that admin has no running timer. Steps 9a–9h use throwaway employees.
 2. Creates the customer "Acme Corp Design Client" and the projects "Brand Identity Redesign" and "Product Packaging Design".
 3. Starting a timer moves the project to `IN_PROGRESS`.
 4. A second start on the same project is rejected, and so is a start on another project by the same user.
 5. **Ownership:** a temporary second user (`EMPLOYEE`) can't pause or stop the first user's timer, and the timer keeps running. The temporary user is deleted.
 6. Pause records ≥ 2 seconds; resume creates a new entry; stop leaves 2 entries totalling ≥ 4 seconds and status `IDLE`.
-7. Checks the project statistics.
+7. Pause/resume segments share one `sessionId`.
+8. With throwaway employees:
+   - a concurrent double start leaves exactly one running segment;
+   - pause is idempotent, and only the owner can resume (an unassigned employee is refused);
+   - another user's stop leaves this user's paused session alone;
+   - resume and start replays with the same op id don't duplicate;
+   - switching projects stops the first session with `SWITCH`;
+   - an offline stop keeps its recorded time;
+   - edits and deletes write `EDIT` then `DELETE` correction rows.
+9. Checks the project statistics.
 
 Cleanup:
 

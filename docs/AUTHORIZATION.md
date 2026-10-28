@@ -195,9 +195,14 @@ The check runs before the action's `try` block, so a denied action **throws** (t
 | `/api/projects` | GET | `projects:view` | 401 / 403 / 400 |
 | `/api/projects` | POST | `projects:create` | 400 with Zod details on invalid body |
 | `/api/projects/[id]` | GET / PUT / DELETE | `projects:view` / `projects:edit` / `projects:delete` | 404 if not found (GET) |
-| `/api/projects/[id]/timer/start`, `.../resume` | POST | `projects:timer` | **409** if the project or user already has a running timer |
-| `/api/projects/[id]/timer/pause`, `.../stop` | POST | `projects:timer` | **403** if the running timer belongs to someone else |
-| `/api/projects/[id]/timer/status`, `/api/projects/[id]/time-entries` | GET | `projects:view` | Clients receive approved entries only |
+| `/api/projects/[id]/timer/start`, `.../resume` | POST | `projects:timer`; the service requires assignment (Admins always). Resume also requires the caller's **own** paused segment | **409** if the project or user already has a running timer |
+| `/api/projects/[id]/timer/pause`, `.../stop` | POST | `projects:timer` | **403** if the running timer belongs to someone else. Stop only closes the owner's paused segments |
+| `/api/projects/[id]/timer/status` | GET | `projects:view` and project access (`canAccessProject`) | 404 for a project the caller can't see; clients get no name or task |
+| `/api/projects/[id]/time-entries` | GET | `projects:view` | Clients receive approved entries only |
+| `/api/time-entries/[id]` | PATCH / DELETE | `projects:timer`; Admin any, owner within 24 h | A `reason` is required; a `TimeEntryCorrection` is written |
+| `/api/time-entries/[id]/corrections` | GET | `timesheet:view`; Admin any, owner only | Correction history |
+| `/api/timesheet/export` | GET | `timesheet:view`; employees forced to their own time | CSV (`?month=`, `?summary=1`) |
+| `/api/companion/timer`, `/api/companion/timer/ops` | GET / POST | **Bearer device token** (no session), excluded from `proxy.ts` by exact path; ops need `projects:timer` (new tasks also `tasks:create`), and every panel timer rule applies. Op ids are bound to the account that first sent them | **401** bad token, **400** invalid body; per-op `REJECTED`/`CONFLICT` results |
 | `/api/time-entries/[id]/approve` | POST / DELETE | `projects:approve_time` | Approve / unapprove one entry; a running entry can't be approved |
 | `/api/projects/[id]/time-entries/approve` | POST | `projects:approve_time` | Approves all completed, unapproved entries of the project |
 | `/api/projects/[id]/assignable-users` | GET | `tasks:view` | Admins, assigned employees and the project's client users (id, name, role); 404 if the project isn't visible |
